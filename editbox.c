@@ -1,57 +1,52 @@
 /* ------------- editbox.c ------------ */
 #include "dflat.h"
 
-#define EditBufLen(wnd) (isMultiLine(wnd) ? EDITLEN : ENTRYLEN)
+#define EditBufLen(wnd) (DfIsMultiLine(wnd) ? DF_EDITLEN : DF_ENTRYLEN)
 #define SetLinePointer(wnd, ln) (wnd->CurrLine = ln)
-#define Ch(c) ((c)&0x7f)
-#define isWhite(c) (Ch(c)==' '||Ch(c)=='\n'||Ch(c)=='\f'||Ch(c)=='\t')
+#define isWhite(c)     ((c)==' '||(c)=='\n')
 /* ---------- local prototypes ----------- */
-static void SaveDeletedText(WINDOW, char *, int);
-static void Forward(WINDOW);
-static void Backward(WINDOW);
-static void End(WINDOW);
-static void Home(WINDOW);
-static void Downward(WINDOW);
-static void Upward(WINDOW);
-static void StickEnd(WINDOW);
-static void NextWord(WINDOW);
-static void PrevWord(WINDOW);
-static void ModTextPointers(WINDOW, int, int);
-static void SetAnchor(WINDOW, int, int);
+static void SaveDeletedText(DFWINDOW, char *, int);
+static void Forward(DFWINDOW);
+static void Backward(DFWINDOW);
+static void End(DFWINDOW);
+static void Home(DFWINDOW);
+static void Downward(DFWINDOW);
+static void Upward(DFWINDOW);
+static void StickEnd(DFWINDOW);
+static void NextWord(DFWINDOW);
+static void PrevWord(DFWINDOW);
+static void ModTextPointers(DFWINDOW, int, int);
+static void SetAnchor(DFWINDOW, int, int);
 /* -------- local variables -------- */
 static BOOL KeyBoardMarking, ButtonDown;
 static BOOL TextMarking;
 static int ButtonX, ButtonY;
 static int PrevY = -1;
 
-/* ----------- CREATE_WINDOW Message ---------- */
-static int CreateWindowMsg(WINDOW wnd)
+/* ----------- DFM_CREATE_WINDOW Message ---------- */
+static int CreateWindowMsg(DFWINDOW wnd)
 {
-    int rtn = BaseWndProc(EDITBOX, wnd, CREATE_WINDOW, 0, 0);
-    wnd->MaxTextLength = MAXTEXTLEN+1;
+    int rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_CREATE_WINDOW, 0, 0);
+    wnd->MaxTextLength = DF_MAXTEXTLEN+1;
     wnd->textlen = EditBufLen(wnd);
     wnd->InsertMode = TRUE;
-	if (isMultiLine(wnd))
-	    wnd->WordWrapMode = TRUE;
-	SendMessage(wnd, CLEARTEXT, 0, 0);
+	DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
     return rtn;
 }
-/* ----------- SETTEXT Message ---------- */
-static int SetTextMsg(WINDOW wnd, PARAM p1)
+/* ----------- DFM_SETTEXT Message ---------- */
+static int SetTextMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     int rtn = FALSE;
-    if (strlen((char *)p1) <= wnd->MaxTextLength)	{
-        rtn = BaseWndProc(EDITBOX, wnd, SETTEXT, p1, 0);
-	    wnd->TextChanged = FALSE;
-	}
+    if (strlen((char *)p1) <= wnd->MaxTextLength)
+        rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_SETTEXT, p1, 0);
     return rtn;
 }
-/* ----------- CLEARTEXT Message ------------ */
-static int ClearTextMsg(WINDOW wnd)
+/* ----------- DFM_CLEARTEXT Message ------------ */
+static int ClearTextMsg(DFWINDOW wnd)
 {
-    int rtn = BaseWndProc(EDITBOX, wnd, CLEARTEXT, 0, 0);
+    int rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_CLEARTEXT, 0, 0);
     unsigned blen = EditBufLen(wnd)+2;
-    wnd->text = DFrealloc(wnd->text, blen);
+    wnd->text = DfRealloc(wnd->text, blen);
     memset(wnd->text, 0, blen);
     wnd->wlines = 0;
     wnd->CurrLine = 0;
@@ -63,30 +58,30 @@ static int ClearTextMsg(WINDOW wnd)
     wnd->TextChanged = FALSE;
     return rtn;
 }
-/* ----------- ADDTEXT Message ---------- */
-static int AddTextMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----------- DFM_ADDTEXT Message ---------- */
+static int AddTextMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
     int rtn = FALSE;
     if (strlen((char *)p1)+wnd->textlen <= wnd->MaxTextLength) {
-        rtn = BaseWndProc(EDITBOX, wnd, ADDTEXT, p1, p2);
+        rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_ADDTEXT, p1, p2);
         if (rtn != FALSE)    {
-            if (!isMultiLine(wnd))    {
+            if (!DfIsMultiLine(wnd))    {
                 wnd->CurrLine = 0;
                 wnd->CurrCol = strlen((char *)p1);
-                if (wnd->CurrCol >= ClientWidth(wnd))    {
-                    wnd->wleft = wnd->CurrCol-ClientWidth(wnd);
+                if (wnd->CurrCol >= DfClientWidth(wnd))    {
+                    wnd->wleft = wnd->CurrCol-DfClientWidth(wnd);
                     wnd->CurrCol -= wnd->wleft;
                 }
                 wnd->BlkEndCol = wnd->CurrCol;
-                SendMessage(wnd, KEYBOARD_CURSOR,
-                                     WndCol, wnd->WndRow);
+                DfSendMessage(wnd, DFM_KEYBOARD_CURSOR,
+                                     DfWndCol, wnd->WndRow);
             }
         }
     }
     return rtn;
 }
-/* ----------- GETTEXT Message ---------- */
-static int GetTextMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----------- DFM_GETTEXT Message ---------- */
+static int GetTextMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
     char *cp1 = (char *)p1;
     char *cp2 = wnd->text;
@@ -98,55 +93,55 @@ static int GetTextMsg(WINDOW wnd, PARAM p1, PARAM p2)
     }
     return FALSE;
 }
-/* ----------- SETTEXTLENGTH Message ---------- */
-static int SetTextLengthMsg(WINDOW wnd, unsigned int len)
+/* ----------- DFM_SETTEXTLENGTH Message ---------- */
+static int SetTextLengthMsg(DFWINDOW wnd, unsigned int len)
 {
-    if (++len < MAXTEXTLEN)    {
+    if (++len < DF_MAXTEXTLEN)    {
         wnd->MaxTextLength = len;
         if (len < wnd->textlen)    {
-            wnd->text=DFrealloc(wnd->text, len+2);
+            wnd->text=DfRealloc(wnd->text, len+2);
             wnd->textlen = len;
             *((wnd->text)+len) = '\0';
             *((wnd->text)+len+1) = '\0';
-            BuildTextPointers(wnd);
+            DfBuildTextPointers(wnd);
         }
         return TRUE;
     }
     return FALSE;
 }
-/* ----------- KEYBOARD_CURSOR Message ---------- */
-static void KeyboardCursorMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----------- DFM_KEYBOARD_CURSOR Message ---------- */
+static void KeyboardCursorMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
     wnd->CurrCol = (int)p1 + wnd->wleft;
     wnd->WndRow = (int)p2;
     wnd->CurrLine = (int)p2 + wnd->wtop;
-    if (wnd == inFocus)	{
-		if (CharInView(wnd, (int)p1, (int)p2))
-	        SendMessage(NULL, SHOW_CURSOR,
+    if (wnd == DfInFocus)	{
+		if (DfCharInView(wnd, (int)p1, (int)p2))
+	        DfSendMessage(NULL, DFM_SHOW_CURSOR,
 				(wnd->InsertMode && !TextMarking), 0);
     	else
-			SendMessage(NULL, HIDE_CURSOR, 0, 0);
+			DfSendMessage(NULL, DFM_HIDE_CURSOR, 0, 0);
 	}
 }
 /* ----------- SIZE Message ---------- */
-int SizeMsg(WINDOW wnd, PARAM p1, PARAM p2)
+int SizeMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int rtn = BaseWndProc(EDITBOX, wnd, SIZE, p1, p2);
-    if (WndCol > ClientWidth(wnd)-1)
-        wnd->CurrCol = ClientWidth(wnd)-1 + wnd->wleft;
-    if (wnd->WndRow > ClientHeight(wnd)-1)    {
-        wnd->WndRow = ClientHeight(wnd)-1;
+    int rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_DFM_SIZE, p1, p2);
+    if (DfWndCol > DfClientWidth(wnd)-1)
+        wnd->CurrCol = DfClientWidth(wnd)-1 + wnd->wleft;
+    if (wnd->WndRow > DfClientHeight(wnd)-1)    {
+        wnd->WndRow = DfClientHeight(wnd)-1;
         SetLinePointer(wnd, wnd->WndRow+wnd->wtop);
     }
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     return rtn;
 }
-/* ----------- SCROLL Message ---------- */
-static int ScrollMsg(WINDOW wnd, PARAM p1)
+/* ----------- DFM_SCROLL Message ---------- */
+static int ScrollMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     int rtn = FALSE;
-    if (isMultiLine(wnd))    {
-        rtn = BaseWndProc(EDITBOX,wnd,SCROLL,p1,0);
+    if (DfIsMultiLine(wnd))    {
+        rtn = DfBaseWndProc(DF_EDITBOX,wnd,DFM_SCROLL,p1,0);
         if (rtn != FALSE)    {
             if (p1)    {
                 /* -------- scrolling up --------- */
@@ -159,7 +154,7 @@ static int ScrollMsg(WINDOW wnd, PARAM p1)
             }
             else    {
                 /* -------- scrolling down --------- */
-                if (wnd->WndRow == ClientHeight(wnd)-1)    {
+                if (wnd->WndRow == DfClientHeight(wnd)-1)    {
                     if (wnd->CurrLine > 0)
                         --wnd->CurrLine;
                     StickEnd(wnd);
@@ -167,168 +162,170 @@ static int ScrollMsg(WINDOW wnd, PARAM p1)
                 else
                     wnd->WndRow++;
             }
-            SendMessage(wnd,KEYBOARD_CURSOR,WndCol,wnd->WndRow);
+            DfSendMessage(wnd,DFM_KEYBOARD_CURSOR,DfWndCol,wnd->WndRow);
         }
     }
     return rtn;
 }
-/* ----------- HORIZSCROLL Message ---------- */
-static int HorizScrollMsg(WINDOW wnd, PARAM p1)
+/* ----------- DFM_HORIZSCROLL Message ---------- */
+static int HorizScrollMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     int rtn = FALSE;
-    char *currchar = CurrChar;
+    char *currchar = DfCurrChar;
     if (!(p1 &&
             wnd->CurrCol == wnd->wleft && *currchar == '\n'))  {
-        rtn = BaseWndProc(EDITBOX, wnd, HORIZSCROLL, p1, 0);
+        rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_HORIZSCROLL, p1, 0);
         if (rtn != FALSE)    {
             if (wnd->CurrCol < wnd->wleft)
                 wnd->CurrCol++;
-            else if (WndCol == ClientWidth(wnd))
+            else if (DfWndCol == DfClientWidth(wnd))
                 --wnd->CurrCol;
-            SendMessage(wnd,KEYBOARD_CURSOR,WndCol,wnd->WndRow);
+            DfSendMessage(wnd,DFM_KEYBOARD_CURSOR,DfWndCol,wnd->WndRow);
         }
     }
     return rtn;
 }
-/* ----------- SCROLLPAGE Message ---------- */
-static int ScrollPageMsg(WINDOW wnd, PARAM p1)
+/* ----------- DFM_SCROLLPAGE Message ---------- */
+static int ScrollPageMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     int rtn = FALSE;
-    if (isMultiLine(wnd))    {
-        rtn = BaseWndProc(EDITBOX, wnd, SCROLLPAGE, p1, 0);
+    if (DfIsMultiLine(wnd))    {
+        rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_SCROLLPAGE, p1, 0);
         SetLinePointer(wnd, wnd->wtop+wnd->WndRow);
         StickEnd(wnd);
-        SendMessage(wnd, KEYBOARD_CURSOR,WndCol, wnd->WndRow);
+        DfSendMessage(wnd, DFM_KEYBOARD_CURSOR,DfWndCol, wnd->WndRow);
     }
     return rtn;
 }
 /* ----------- HORIZSCROLLPAGE Message ---------- */
-static int HorizPageMsg(WINDOW wnd, PARAM p1)
+static int HorizPageMsg(DFWINDOW wnd, DF_PARAM p1)
 {
-    int rtn = BaseWndProc(EDITBOX, wnd, HORIZPAGE, p1, 0);
+    int rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_HORIZPAGE, p1, 0);
     if ((int) p1 == FALSE)    {
-        if (wnd->CurrCol > wnd->wleft+ClientWidth(wnd)-1)
-            wnd->CurrCol = wnd->wleft+ClientWidth(wnd)-1;
+        if (wnd->CurrCol > wnd->wleft+DfClientWidth(wnd)-1)
+            wnd->CurrCol = wnd->wleft+DfClientWidth(wnd)-1;
     }
     else if (wnd->CurrCol < wnd->wleft)
         wnd->CurrCol = wnd->wleft;
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     return rtn;
 }
 /* ----- Extend the marked block to the new x,y position ---- */
-static void ExtendBlock(WINDOW wnd, int x, int y)
+static void ExtendBlock(DFWINDOW wnd, int x, int y)
 {
     int bbl, bel;
     int ptop = min(wnd->BlkBegLine, wnd->BlkEndLine);
     int pbot = max(wnd->BlkBegLine, wnd->BlkEndLine);
-    char *lp = TextLine(wnd, wnd->wtop+y);
+    char *lp = DfTextLine(wnd, wnd->wtop+y);
     int len = (int) (strchr(lp, '\n') - lp);
     x = max(0, min(x, len));
-	y = max(0, y);
+    y = max(0, y);
     wnd->BlkEndCol = min(len, x+wnd->wleft);
     wnd->BlkEndLine = y+wnd->wtop;
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, wnd->BlkEndCol, wnd->BlkEndLine);
     bbl = min(wnd->BlkBegLine, wnd->BlkEndLine);
     bel = max(wnd->BlkBegLine, wnd->BlkEndLine);
     while (ptop < bbl)    {
-        WriteTextLine(wnd, NULL, ptop, FALSE);
+        DfWriteTextLine(wnd, NULL, ptop, FALSE);
         ptop++;
     }
     for (y = bbl; y <= bel; y++)
-        WriteTextLine(wnd, NULL, y, FALSE);
+        DfWriteTextLine(wnd, NULL, y, FALSE);
     while (pbot > bel)    {
-        WriteTextLine(wnd, NULL, pbot, FALSE);
+        DfWriteTextLine(wnd, NULL, pbot, FALSE);
         --pbot;
     }
 }
-/* ----------- LEFT_BUTTON Message ---------- */
-static int LeftButtonMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----------- DFM_LEFT_BUTTON Message ---------- */
+static int LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int MouseX = (int) p1 - GetClientLeft(wnd);
-    int MouseY = (int) p2 - GetClientTop(wnd);
-    RECT rc = ClientRect(wnd);
+    int MouseX = (int) p1 - DfGetClientLeft(wnd);
+    int MouseY = (int) p2 - DfGetClientTop(wnd);
+    DFRECT rc = DfClientRect(wnd);
     char *lp;
     int len;
     if (KeyBoardMarking)
         return TRUE;
-    if (WindowMoving || WindowSizing)
+    if (DfWindowMoving || DfWindowSizing)
         return FALSE;
-    if (TextMarking)    {
-        if (!InsideRect(p1, p2, rc))    {
-			int x = MouseX, y = MouseY;
-			int dir;
-			MESSAGE msg = 0;
-            if ((int)p2 == GetTop(wnd))
-				y++, dir = FALSE, msg = SCROLL;
-            else if ((int)p2 == GetBottom(wnd))
-				--y, dir = TRUE, msg = SCROLL;
-            else if ((int)p1 == GetLeft(wnd))
-				--x, dir = FALSE, msg = HORIZSCROLL;
-            else if ((int)p1 == GetRight(wnd))
-				x++, dir = TRUE, msg = HORIZSCROLL;
-			if (msg != 0)	{
-                if (SendMessage(wnd, msg, dir, 0))
-                    ExtendBlock(wnd, x, y);
-	            SendMessage(wnd, PAINT, 0, 0);
-			}
-        }
-        return TRUE;
-    }
-    if (!InsideRect(p1, p2, rc))
-        return FALSE;
-    if (TextBlockMarked(wnd))    {
-        ClearTextBlock(wnd);
-        SendMessage(wnd, PAINT, 0, 0);
-    }
-    if (wnd->wlines)    {
-        if (MouseY > wnd->wlines-1)
+    if (DfIsMultiLine(wnd))    {
+        if (TextMarking)    {
+            if (!DfInsideRect(p1, p2, rc))    {
+				int x = MouseX, y = MouseY;
+				int dir;
+				DFMESSAGE msg = 0;
+                if ((int)p2 == DfGetTop(wnd))
+					y++, dir = FALSE, msg = DFM_SCROLL;
+                else if ((int)p2 == DfGetBottom(wnd))
+					--y, dir = TRUE, msg = DFM_SCROLL;
+                else if ((int)p1 == DfGetLeft(wnd))
+					--x, dir = FALSE, msg = DFM_HORIZSCROLL;
+                else if ((int)p1 == DfGetRight(wnd))
+					x++, dir = TRUE, msg = DFM_HORIZSCROLL;
+				if (msg != 0)	{
+                    if (DfSendMessage(wnd, msg, dir, 0))
+                        ExtendBlock(wnd, x, y);
+	                DfSendMessage(wnd, DFM_PAINT, 0, 0);
+				}
+            }
             return TRUE;
-        lp = TextLine(wnd, MouseY+wnd->wtop);
-        len = (int) (strchr(lp, '\n') - lp);
-        MouseX = min(MouseX, len);
-        if (MouseX < wnd->wleft)    {
-            MouseX = 0;
-            SendMessage(wnd, KEYBOARD, HOME, 0);
         }
-        ButtonDown = TRUE;
-        ButtonX = MouseX;
-        ButtonY = MouseY;
+        if (!DfInsideRect(p1, p2, rc))
+            return FALSE;
+        if (DfTextBlockMarked(wnd))    {
+            DfClearTextBlock(wnd);
+            DfSendMessage(wnd, DFM_PAINT, 0, 0);
+        }
+        if (wnd->wlines)    {
+            if (MouseY > wnd->wlines-1)
+                return TRUE;
+            lp = DfTextLine(wnd, MouseY+wnd->wtop);
+            len = (int) (strchr(lp, '\n') - lp);
+            MouseX = min(MouseX, len);
+            if (MouseX < wnd->wleft)    {
+                MouseX = 0;
+                DfSendMessage(wnd, DFM_KEYBOARD, DF_HOME, 0);
+            }
+            ButtonDown = TRUE;
+            ButtonX = MouseX;
+            ButtonY = MouseY;
+        }
+        else
+            MouseX = MouseY = 0;
+        wnd->WndRow = MouseY;
+        SetLinePointer(wnd, MouseY+wnd->wtop);
     }
-    else
-        MouseX = MouseY = 0;
-    wnd->WndRow = MouseY;
-    SetLinePointer(wnd, MouseY+wnd->wtop);
-
-    if (isMultiLine(wnd) ||
-        (!TextBlockMarked(wnd)
-            && MouseX+wnd->wleft < strlen(wnd->text)))
+    if (DfIsMultiLine(wnd) ||
+        (!DfTextBlockMarked(wnd)
+            && (int)(MouseX+wnd->wleft) < (int)strlen(wnd->text)))
         wnd->CurrCol = MouseX+wnd->wleft;
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     return TRUE;
 }
 /* ----------- MOUSE_MOVED Message ---------- */
-static int MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
+static int MouseMovedMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int MouseX = (int) p1 - GetClientLeft(wnd);
-    int MouseY = (int) p2 - GetClientTop(wnd);
-    RECT rc = ClientRect(wnd);
-    if (!InsideRect(p1, p2, rc))
+    int MouseX = (int) p1 - DfGetClientLeft(wnd);
+    int MouseY = (int) p2 - DfGetClientTop(wnd);
+    DFRECT rc = DfClientRect(wnd);
+    if (!DfInsideRect(p1, p2, rc))
         return FALSE;
     if (MouseY > wnd->wlines-1)
         return FALSE;
     if (ButtonDown)    {
         SetAnchor(wnd, ButtonX+wnd->wleft, ButtonY+wnd->wtop);
         TextMarking = TRUE;
-		rc = WindowRect(wnd);
-        SendMessage(NULL,MOUSE_TRAVEL,(PARAM) &rc, 0);
+		rc = DfWindowRect(wnd);
+        DfSendMessage(NULL,DFM_MOUSE_TRAVEL,(DF_PARAM) &rc, 0);
         ButtonDown = FALSE;
     }
-    if (TextMarking && !(WindowMoving || WindowSizing))    {
+    if (TextMarking && !(DfWindowMoving || DfWindowSizing))    {
         ExtendBlock(wnd, MouseX, MouseY);
         return TRUE;
     }
     return FALSE;
 }
-static void StopMarking(WINDOW wnd)
+static void StopMarking(DFWINDOW wnd)
 {
     TextMarking = FALSE;
     if (wnd->BlkBegLine > wnd->BlkEndLine)    {
@@ -340,38 +337,41 @@ static void StopMarking(WINDOW wnd)
         swap(wnd->BlkBegCol, wnd->BlkEndCol);
 }
 /* ----------- BUTTON_RELEASED Message ---------- */
-static int ButtonReleasedMsg(WINDOW wnd)
+static int ButtonReleasedMsg(DFWINDOW wnd)
 {
-    ButtonDown = FALSE;
-    if (TextMarking && !(WindowMoving || WindowSizing))  {
-        /* release the mouse ouside the edit box */
-        SendMessage(NULL, MOUSE_TRAVEL, 0, 0);
-        StopMarking(wnd);
-        return TRUE;
+    if (DfIsMultiLine(wnd))    {
+        ButtonDown = FALSE;
+        if (TextMarking && !(DfWindowMoving || DfWindowSizing))  {
+            /* release the mouse ouside the edit box */
+            DfSendMessage(NULL, DFM_MOUSE_TRAVEL, 0, 0);
+            StopMarking(wnd);
+            return TRUE;
+        }
+        else
+            PrevY = -1;
     }
-    PrevY = -1;
     return FALSE;
 }
 /* ---- Process text block keys for multiline text box ---- */
-static void DoMultiLines(WINDOW wnd, int c, PARAM p2)
+static void DoMultiLines(DFWINDOW wnd, int c, DF_PARAM p2)
 {
-    if (!KeyBoardMarking)    {
-        if ((int)p2 & (LEFTSHIFT | RIGHTSHIFT))    {
+    if (DfIsMultiLine(wnd) && !KeyBoardMarking)    {
+        if ((int)p2 & (DF_LEFTSHIFT | DF_RIGHTSHIFT))    {
             switch (c)    {
-                case HOME:
-                case CTRL_HOME:
-                case CTRL_BS:
-                case PGUP:
-                case CTRL_PGUP:
-                case UP:
-                case BS:
-                case END:
-                case CTRL_END:
-                case PGDN:
-                case CTRL_PGDN:
-                case DN:
-                case FWD:
-                case CTRL_FWD:
+                case DF_HOME:
+                case DF_CTRL_HOME:
+                case DF_CTRL_BS:
+                case DF_PGUP:
+                case DF_CTRL_PGUP:
+                case DF_UP:
+                case DF_BS:
+                case DF_END:
+                case DF_CTRL_END:
+                case DF_PGDN:
+                case DF_CTRL_PGDN:
+                case DF_DN:
+                case DF_FWD:
+                case DF_CTRL_FWD:
                     KeyBoardMarking = TextMarking = TRUE;
                     SetAnchor(wnd, wnd->CurrCol, wnd->CurrLine);
                     break;
@@ -382,149 +382,149 @@ static void DoMultiLines(WINDOW wnd, int c, PARAM p2)
     }
 }
 /* ---------- page/scroll keys ----------- */
-static int DoScrolling(WINDOW wnd, int c, PARAM p2)
+static int DoScrolling(DFWINDOW wnd, int c, DF_PARAM p2)
 {
     switch (c)    {
-        case PGUP:
-        case PGDN:
-            if (isMultiLine(wnd))
-                BaseWndProc(EDITBOX, wnd, KEYBOARD, c, p2);
+        case DF_PGUP:
+        case DF_PGDN:
+            if (DfIsMultiLine(wnd))
+                DfBaseWndProc(DF_EDITBOX, wnd, DFM_KEYBOARD, c, p2);
             break;
-        case CTRL_PGUP:
-        case CTRL_PGDN:
-            BaseWndProc(EDITBOX, wnd, KEYBOARD, c, p2);
+        case DF_CTRL_PGUP:
+        case DF_CTRL_PGDN:
+            DfBaseWndProc(DF_EDITBOX, wnd, DFM_KEYBOARD, c, p2);
             break;
-        case HOME:
+        case DF_HOME:
             Home(wnd);
             break;
-        case END:
+        case DF_END:
             End(wnd);
             break;
-        case CTRL_FWD:
+        case DF_CTRL_FWD:
             NextWord(wnd);
             break;
-        case CTRL_BS:
+        case DF_CTRL_BS:
             PrevWord(wnd);
             break;
-        case CTRL_HOME:
-            if (isMultiLine(wnd))    {
-                SendMessage(wnd, SCROLLDOC, TRUE, 0);
+        case DF_CTRL_HOME:
+            if (DfIsMultiLine(wnd))    {
+                DfSendMessage(wnd, DFM_SCROLLDOC, TRUE, 0);
                 wnd->CurrLine = 0;
                 wnd->WndRow = 0;
             }
             Home(wnd);
             break;
-        case CTRL_END:
-			if (isMultiLine(wnd) &&
+        case DF_CTRL_END:
+			if (DfIsMultiLine(wnd) &&
 					wnd->WndRow+wnd->wtop+1 < wnd->wlines
 						&& wnd->wlines > 0) {
-                SendMessage(wnd, SCROLLDOC, FALSE, 0);
+                DfSendMessage(wnd, DFM_SCROLLDOC, FALSE, 0);
                 SetLinePointer(wnd, wnd->wlines-1);
                 wnd->WndRow =
-                    min(ClientHeight(wnd)-1, wnd->wlines-1);
+                    min(DfClientHeight(wnd)-1, wnd->wlines-1);
                 Home(wnd);
             }
             End(wnd);
             break;
-        case UP:
-            if (isMultiLine(wnd))
+        case DF_UP:
+            if (DfIsMultiLine(wnd))
                 Upward(wnd);
             break;
-        case DN:
-            if (isMultiLine(wnd))
+        case DF_DN:
+            if (DfIsMultiLine(wnd))
                 Downward(wnd);
             break;
-        case FWD:
+        case DF_FWD:
             Forward(wnd);
             break;
-        case BS:
+        case DF_BS:
             Backward(wnd);
             break;
         default:
             return FALSE;
     }
-    if (!KeyBoardMarking && TextBlockMarked(wnd))    {
-        ClearTextBlock(wnd);
-        SendMessage(wnd, PAINT, 0, 0);
+    if (!KeyBoardMarking && DfTextBlockMarked(wnd))    {
+        DfClearTextBlock(wnd);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     return TRUE;
 }
 /* -------------- Del key ---------------- */
-static void DelKey(WINDOW wnd)
+static void DelKey(DFWINDOW wnd)
 {
-    char *currchar = CurrChar;
+    char *currchar = DfCurrChar;
     int repaint = *currchar == '\n';
-    if (TextBlockMarked(wnd))    {
-        SendMessage(wnd, COMMAND, ID_DELETETEXT, 0);
-        SendMessage(wnd, PAINT, 0, 0);
+    if (DfTextBlockMarked(wnd))    {
+        DfSendMessage(wnd, DFM_COMMAND, DF_ID_DELETETEXT, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
         return;
     }
-    if (isMultiLine(wnd) && *currchar == '\n' && *(currchar+1) == '\0')
+    if (DfIsMultiLine(wnd) && *currchar == '\n' && *(currchar+1) == '\0')
         return;
     strcpy(currchar, currchar+1);
     if (repaint)    {
-        BuildTextPointers(wnd);
-        SendMessage(wnd, PAINT, 0, 0);
+        DfBuildTextPointers(wnd);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
     else    {
         ModTextPointers(wnd, wnd->CurrLine+1, -1);
-        WriteTextLine(wnd, NULL, wnd->WndRow+wnd->wtop, FALSE);
+        DfWriteTextLine(wnd, NULL, wnd->WndRow+wnd->wtop, FALSE);
     }
     wnd->TextChanged = TRUE;
 }
 /* ------------ Tab key ------------ */
-static void TabKey(WINDOW wnd, PARAM p2)
+static void TabKey(DFWINDOW wnd, DF_PARAM p2)
 {
-    if (isMultiLine(wnd))    {
+    if (DfIsMultiLine(wnd))    {
         int insmd = wnd->InsertMode;
         do  {
-            char *cc = CurrChar+1;
+            char *cc = DfCurrChar+1;
             if (!insmd && *cc == '\0')
                 break;
             if (wnd->textlen == wnd->MaxTextLength)
                 break;
-            SendMessage(wnd,KEYBOARD,insmd ? ' ' : FWD,0);
-        } while (wnd->CurrCol % cfg.Tabs);
+            DfSendMessage(wnd,DFM_KEYBOARD,insmd ? ' ' : DF_FWD,0);
+        } while (wnd->CurrCol % DfCfg.Tabs);
     }
 	else
-	    PostMessage(GetParent(wnd), KEYBOARD, '\t', p2);
+	    DfPostMessage(DfGetParent(wnd), DFM_KEYBOARD, '\t', p2);
 }
 /* ------------ Shift+Tab key ------------ */
-static void ShiftTabKey(WINDOW wnd, PARAM p2)
+static void ShiftTabKey(DFWINDOW wnd, DF_PARAM p2)
 {
-    if (isMultiLine(wnd))    {
+    if (DfIsMultiLine(wnd))    {
         do  {
-            if (CurrChar == GetText(wnd))
+            if (DfCurrChar == DfGetText(wnd))
                 break;
-            SendMessage(wnd,KEYBOARD,BS,0);
-        } while (wnd->CurrCol % cfg.Tabs);
+            DfSendMessage(wnd,DFM_KEYBOARD,DF_BS,0);
+        } while (wnd->CurrCol % DfCfg.Tabs);
     }
 	else
-	    PostMessage(GetParent(wnd), KEYBOARD, SHIFT_HT, p2);
+	    DfPostMessage(DfGetParent(wnd), DFM_KEYBOARD, DF_SHIFT_HT, p2);
 }
 /* --------- All displayable typed keys ------------- */
-static void KeyTyped(WINDOW wnd, int c)
+static void KeyTyped(DFWINDOW wnd, int c)
 {
-    char *currchar = CurrChar;
+    char *currchar = DfCurrChar;
     if ((c != '\n' && c < ' ') || (c & 0x1000))
         /* ---- not recognized by editor --- */
         return;
-    if (!isMultiLine(wnd) && TextBlockMarked(wnd))    {
-		SendMessage(wnd, CLEARTEXT, 0, 0);
-        currchar = CurrChar;
+    if (!DfIsMultiLine(wnd) && DfTextBlockMarked(wnd))    {
+		DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
+        currchar = DfCurrChar;
     }
     /* ---- test typing at end of text ---- */
     if (currchar == wnd->text+wnd->MaxTextLength)    {
         /* ---- typing at the end of maximum buffer ---- */
-        beep();
+        DfBeep();
         return;
     }
     if (*currchar == '\0')    {
         /* --- insert a newline at end of text --- */
         *currchar = '\n';
         *(currchar+1) = '\0';
-        BuildTextPointers(wnd);
+        DfBuildTextPointers(wnd);
     }
     /* --- displayable char or newline --- */
     if (c == '\n' || wnd->InsertMode || *currchar == '\n') {
@@ -533,28 +533,28 @@ static void KeyTyped(WINDOW wnd, int c)
             /* --- the current text buffer is full --- */
             if (wnd->textlen == wnd->MaxTextLength)    {
                 /* --- text buffer is at maximum size --- */
-                beep();
+                DfBeep();
                 return;
             }
             /* ---- increase the text buffer size ---- */
-            wnd->textlen += GROWLENGTH;
+            wnd->textlen += DF_GROWLENGTH;
             /* --- but not above maximum size --- */
             if (wnd->textlen > wnd->MaxTextLength)
                 wnd->textlen = wnd->MaxTextLength;
-            wnd->text = DFrealloc(wnd->text, wnd->textlen+2);
+            wnd->text = DfRealloc(wnd->text, wnd->textlen+2);
             wnd->text[wnd->textlen-1] = '\0';
-            currchar = CurrChar;
+            currchar = DfCurrChar;
         }
         memmove(currchar+1, currchar, strlen(currchar)+1);
         ModTextPointers(wnd, wnd->CurrLine+1, 1);
-        if (isMultiLine(wnd) && wnd->wlines > 1)
+        if (DfIsMultiLine(wnd) && wnd->wlines > 1)
             wnd->textwidth = max(wnd->textwidth,
-                (int) (TextLine(wnd, wnd->CurrLine+1)-
-                TextLine(wnd, wnd->CurrLine)));
+                (int) (DfTextLine(wnd, wnd->CurrLine+1)-
+                DfTextLine(wnd, wnd->CurrLine)));
         else
-            wnd->textwidth = max(wnd->textwidth,
-                strlen(wnd->text));
-        WriteTextLine(wnd, NULL,
+            wnd->textwidth = max((int)wnd->textwidth,
+                (int)strlen(wnd->text));
+        DfWriteTextLine(wnd, NULL,
             wnd->wtop+wnd->WndRow, FALSE);
     }
     /* ----- put the char in the buffer ----- */
@@ -562,35 +562,35 @@ static void KeyTyped(WINDOW wnd, int c)
     wnd->TextChanged = TRUE;
     if (c == '\n')    {
         wnd->wleft = 0;
-        BuildTextPointers(wnd);
+        DfBuildTextPointers(wnd);
         End(wnd);
         Forward(wnd);
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
         return;
     }
     /* ---------- test end of window --------- */
-    if (WndCol == ClientWidth(wnd)-1)    {
-        if (!isMultiLine(wnd))	{
+    if (DfWndCol == DfClientWidth(wnd)-1)    {
+        if (!DfIsMultiLine(wnd))	{
 			if (!(currchar == wnd->text+wnd->MaxTextLength-2))
-            SendMessage(wnd, HORIZSCROLL, TRUE, 0);
+            DfSendMessage(wnd, DFM_HORIZSCROLL, TRUE, 0);
 		}
 		else	{
 			char *cp = currchar;
-	        while (*cp != ' ' && cp != TextLine(wnd, wnd->CurrLine))
+	        while (*cp != ' ' && cp != DfTextLine(wnd, wnd->CurrLine))
 	            --cp;
-	        if (cp == TextLine(wnd, wnd->CurrLine) ||
+	        if (cp == DfTextLine(wnd, wnd->CurrLine) ||
 	                !wnd->WordWrapMode)
-	            SendMessage(wnd, HORIZSCROLL, TRUE, 0);
+	            DfSendMessage(wnd, DFM_HORIZSCROLL, TRUE, 0);
 	        else    {
 	            int dif = 0;
 	            if (c != ' ')    {
 	                dif = (int) (currchar - cp);
 	                wnd->CurrCol -= dif;
-	                SendMessage(wnd, KEYBOARD, DEL, 0);
+	                DfSendMessage(wnd, DFM_KEYBOARD, DF_DEL, 0);
 	                --dif;
 	            }
-	            SendMessage(wnd, KEYBOARD, '\n', 0);
-	            currchar = CurrChar;
+	            DfSendMessage(wnd, DFM_KEYBOARD, '\n', 0);
+	            currchar = DfCurrChar;
 	            wnd->CurrCol = dif;
 	            if (c == ' ')
 	                return;
@@ -598,141 +598,144 @@ static void KeyTyped(WINDOW wnd, int c)
 	    }
 	}
     /* ------ display the character ------ */
-    SetStandardColor(wnd);
-	if (wnd->protect)
-		c = '*';
-    PutWindowChar(wnd, c, WndCol, wnd->WndRow);
+    DfSetStandardColor(wnd);
+    DfPutWindowChar(wnd, c, DfWndCol, wnd->WndRow);
     /* ----- advance the pointers ------ */
     wnd->CurrCol++;
 }
-
 /* ------------ screen changing key strokes ------------- */
-static void DoKeyStroke(WINDOW wnd, int c, PARAM p2)
+static void DoKeyStroke(DFWINDOW wnd, int c, DF_PARAM p2)
 {
     switch (c)    {
-        case RUBOUT:
+        case DF_RUBOUT:
 			if (wnd->CurrCol == 0 && wnd->CurrLine == 0)
 				break;
-			SendMessage(wnd, KEYBOARD, BS, 0);
-			SendMessage(wnd, KEYBOARD, DEL, 0);
-			break;
-        case DEL:
+            Backward(wnd);
+        case DF_DEL:
             DelKey(wnd);
             break;
-        case SHIFT_HT:
+        case DF_SHIFT_HT:
             ShiftTabKey(wnd, p2);
             break;
         case '\t':
             TabKey(wnd, p2);
             break;
         case '\r':
-            if (!isMultiLine(wnd))    {
-                PostMessage(GetParent(wnd), KEYBOARD, c, p2);
+            if (!DfIsMultiLine(wnd))    {
+                DfPostMessage(DfGetParent(wnd), DFM_KEYBOARD, c, p2);
                 break;
             }
             c = '\n';
         default:
-            if (TextBlockMarked(wnd))    {
-                SendMessage(wnd, COMMAND, ID_DELETETEXT, 0);
-                SendMessage(wnd, PAINT, 0, 0);
+            if (DfTextBlockMarked(wnd))    {
+                DfSendMessage(wnd, DFM_COMMAND, DF_ID_DELETETEXT, 0);
+                DfSendMessage(wnd, DFM_PAINT, 0, 0);
             }
             KeyTyped(wnd, c);
             break;
     }
 }
-/* ----------- KEYBOARD Message ---------- */
-static int KeyboardMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----------- DFM_KEYBOARD Message ---------- */
+static int KeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int c = (int) p1;
-    if (WindowMoving || WindowSizing || ((int)p2 & ALTKEY))
-        return FALSE;
-    switch (c)    {
-        /* --- these keys get processed by lower classes --- */
-        case ESC:
-        case F1:
-        case F2:
-        case F3:
-        case F4:
-        case F5:
-        case F6:
-        case F7:
-        case F8:
-        case F9:
-        case F10:
-        case INS:
-        case SHIFT_INS:
-        case SHIFT_DEL:
-            return FALSE;
-        /* --- these keys get processed here --- */
-        case CTRL_FWD:
-        case CTRL_BS:
-        case CTRL_HOME:
-        case CTRL_END:
-        case CTRL_PGUP:
-        case CTRL_PGDN:
-            break;
-        default:
-            /* other ctrl keys get processed by lower classes */
-            if ((int)p2 & CTRLKEY)
-                return FALSE;
-            /* --- all other keys get processed here --- */
-            break;
-    }
-    DoMultiLines(wnd, c, p2);
-    if (DoScrolling(wnd, c, p2))    {
-        if (KeyBoardMarking)
-            ExtendBlock(wnd, WndCol, wnd->WndRow);
-    }
-    else if (!TestAttribute(wnd, READONLY))    {
-        DoKeyStroke(wnd, c, p2);
-        SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
-    }
-	else if (c == '\t')
-	    PostMessage(GetParent(wnd), KEYBOARD, '\t', p2);
+	int c = (int) p1;
+
+	if (DfWindowMoving || DfWindowSizing || ((int)p2 & DF_ALTKEY))
+		return FALSE;
+
+	switch (c)
+	{
+		/* these keys get processed by lower classes */
+		case DF_ESC:
+		case DF_F1:
+		case DF_F2:
+		case DF_F3:
+		case DF_F4:
+		case DF_F5:
+		case DF_F6:
+		case DF_F7:
+		case DF_F8:
+		case DF_F9:
+		case DF_F10:
+		case DF_INS:
+		case DF_SHIFT_INS:
+		case DF_SHIFT_DEL:
+			return FALSE;
+
+		/* these keys get processed here */
+		case DF_CTRL_FWD:
+		case DF_CTRL_BS:
+		case DF_CTRL_HOME:
+		case DF_CTRL_END:
+		case DF_CTRL_PGUP:
+		case DF_CTRL_PGDN:
+			break;
+
+		default:
+			/* other ctrl keys get processed by lower classes */
+			if ((int)p2 & DF_CTRLKEY)
+				return FALSE;
+			/* all other keys get processed here */
+			break;
+	}
+
+	DoMultiLines(wnd, c, p2);
+	if (DoScrolling(wnd, c, p2))
+	{
+		if (KeyBoardMarking)
+			ExtendBlock(wnd, DfWndCol, wnd->WndRow);
+	}
+	else if (!DfTestAttribute(wnd, DF_READONLY))
+	{
+		DoKeyStroke(wnd, c, p2);
+		DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
+	}
 	else
-		beep();
-    return TRUE;
+		DfBeep();
+
+	return TRUE;
 }
-/* ----------- SHIFT_CHANGED Message ---------- */
-static void ShiftChangedMsg(WINDOW wnd, PARAM p1)
+
+/* ----------- DFM_SHIFT_CHANGED Message ---------- */
+static void ShiftChangedMsg(DFWINDOW wnd, DF_PARAM p1)
 {
-    if (!((int)p1 & (LEFTSHIFT | RIGHTSHIFT)) &&
+    if (!((int)p1 & (DF_LEFTSHIFT | DF_RIGHTSHIFT)) &&
                                    KeyBoardMarking)    {
         StopMarking(wnd);
         KeyBoardMarking = FALSE;
     }
 }
-/* ----------- ID_DELETETEXT Command ---------- */
-static void DeleteTextCmd(WINDOW wnd)
+/* ----------- DF_ID_DELETETEXT Command ---------- */
+static void DeleteTextCmd(DFWINDOW wnd)
 {
-    if (TextBlockMarked(wnd))    {
-        char *bbl=TextLine(wnd,wnd->BlkBegLine)+wnd->BlkBegCol;
-        char *bel=TextLine(wnd,wnd->BlkEndLine)+wnd->BlkEndCol;
+    if (DfTextBlockMarked(wnd))    {
+        char *bbl=DfTextLine(wnd,wnd->BlkBegLine)+wnd->BlkBegCol;
+        char *bel=DfTextLine(wnd,wnd->BlkEndLine)+wnd->BlkEndCol;
         int len = (int) (bel - bbl);
         SaveDeletedText(wnd, bbl, len);
         wnd->TextChanged = TRUE;
         strcpy(bbl, bel);
-        wnd->CurrLine = TextLineNumber(wnd, bbl-wnd->BlkBegCol);
+        wnd->CurrLine = DfTextLineNumber(wnd, bbl-wnd->BlkBegCol);
         wnd->CurrCol = wnd->BlkBegCol;
         wnd->WndRow = wnd->BlkBegLine - wnd->wtop;
         if (wnd->WndRow < 0)    {
             wnd->wtop = wnd->BlkBegLine;
             wnd->WndRow = 0;
         }
-        SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
-        ClearTextBlock(wnd);
-        BuildTextPointers(wnd);
+        DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
+        DfClearTextBlock(wnd);
+        DfBuildTextPointers(wnd);
     }
 }
-/* ----------- ID_CLEAR Command ---------- */
-static void ClearCmd(WINDOW wnd)
+/* ----------- DF_ID_CLEAR Command ---------- */
+static void ClearCmd(DFWINDOW wnd)
 {
-    if (TextBlockMarked(wnd))    {
-        char *bbl=TextLine(wnd,wnd->BlkBegLine)+wnd->BlkBegCol;
-        char *bel=TextLine(wnd,wnd->BlkEndLine)+wnd->BlkEndCol;
+    if (DfTextBlockMarked(wnd))    {
+        char *bbl=DfTextLine(wnd,wnd->BlkBegLine)+wnd->BlkBegCol;
+        char *bel=DfTextLine(wnd,wnd->BlkEndLine)+wnd->BlkEndCol;
         int len = (int) (bel - bbl);
         SaveDeletedText(wnd, bbl, len);
-        wnd->CurrLine = TextLineNumber(wnd, bbl);
+        wnd->CurrLine = DfTextLineNumber(wnd, bbl);
         wnd->CurrCol = wnd->BlkBegCol;
         wnd->WndRow = wnd->BlkBegLine - wnd->wtop;
         if (wnd->WndRow < 0)    {
@@ -748,34 +751,34 @@ static void ClearCmd(WINDOW wnd)
             bel -= (int) (cp - bbl);
             bbl++;
         }
-        ClearTextBlock(wnd);
-        BuildTextPointers(wnd);
-        SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+        DfClearTextBlock(wnd);
+        DfBuildTextPointers(wnd);
+        DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
         wnd->TextChanged = TRUE;
     }
 }
-/* ----------- ID_UNDO Command ---------- */
-static void UndoCmd(WINDOW wnd)
+/* ----------- DF_ID_UNDO Command ---------- */
+static void UndoCmd(DFWINDOW wnd)
 {
     if (wnd->DeletedText != NULL)    {
-        PasteText(wnd, wnd->DeletedText, wnd->DeletedLength);
+        DfPasteText(wnd, wnd->DeletedText, wnd->DeletedLength);
         free(wnd->DeletedText);
         wnd->DeletedText = NULL;
         wnd->DeletedLength = 0;
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
 }
-/* ----------- ID_PARAGRAPH Command ---------- */
-static void ParagraphCmd(WINDOW wnd)
+/* ----------- DF_ID_PARAGRAPH Command ---------- */
+static void ParagraphCmd(DFWINDOW wnd)
 {
     int bc, fl;
     char *bl, *bbl, *bel, *bb;
 
-    ClearTextBlock(wnd);
-    /* ---- forming paragraph from cursor position --- */
+    DfClearTextBlock(wnd);
+    /* ---- forming paragraph from DfCursor position --- */
     fl = wnd->wtop + wnd->WndRow;
-    bbl = bel = bl = TextLine(wnd, wnd->CurrLine);
-    if ((bc = wnd->CurrCol) >= ClientWidth(wnd))
+    bbl = bel = bl = DfTextLine(wnd, wnd->CurrLine);
+    if ((bc = wnd->CurrCol) >= DfClientWidth(wnd))
         bc = 0;
     Home(wnd);
     /* ---- locate the end of the paragraph ---- */
@@ -796,7 +799,7 @@ static void ParagraphCmd(WINDOW wnd)
             bel++;
     }
     if (bel == bbl)    {
-        SendMessage(wnd, KEYBOARD, DN, 0);
+        DfSendMessage(wnd, DFM_KEYBOARD, DF_DN, 0);
         return;
     }
     if (*bel == '\0')
@@ -804,9 +807,9 @@ static void ParagraphCmd(WINDOW wnd)
     if (*bel == '\n')
         --bel;
     /* --- change all newlines in block to spaces --- */
-    while (CurrChar < bel)    {
-        if (*CurrChar == '\n')    {
-            *CurrChar = ' ';
+    while (DfCurrChar < bel)    {
+        if (*DfCurrChar == '\n')    {
+            *DfCurrChar = ' ';
             wnd->CurrLine++;
             wnd->CurrCol = 0;
         }
@@ -817,7 +820,7 @@ static void ParagraphCmd(WINDOW wnd)
     bb = bbl;
     while (bbl < bel)    {
         bbl++;
-        if ((int)(bbl - bb) == ClientWidth(wnd)-1)    {
+        if ((int)(bbl - bb) == DfClientWidth(wnd)-1)    {
             while (*bbl != ' ' && bbl > bb)
                 --bbl;
             if (*bbl != ' ')    {
@@ -829,119 +832,94 @@ static void ParagraphCmd(WINDOW wnd)
             bb = bbl+1;
         }
     }
-    BuildTextPointers(wnd);
-    /* --- put cursor back at beginning --- */
-    wnd->CurrLine = TextLineNumber(wnd, bl);
+    DfBuildTextPointers(wnd);
+    /* --- put DfCursor back at beginning --- */
+    wnd->CurrLine = DfTextLineNumber(wnd, bl);
     wnd->CurrCol = bc;
     if (fl < wnd->wtop)
         wnd->wtop = fl;
     wnd->WndRow = fl - wnd->wtop;
-    SendMessage(wnd, PAINT, 0, 0);
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     wnd->TextChanged = TRUE;
-    BuildTextPointers(wnd);
+    DfBuildTextPointers(wnd);
 }
 /* ----------- COMMAND Message ---------- */
-static int CommandMsg(WINDOW wnd, PARAM p1)
+static int CommandMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     switch ((int)p1)    {
-		case ID_SEARCH:
-			SearchText(wnd);
-			return TRUE;
-		case ID_REPLACE:
-			ReplaceText(wnd);
-			return TRUE;
-		case ID_SEARCHNEXT:
-			SearchNext(wnd);
-			return TRUE;
-		case ID_CUT:
-			CopyToClipboard(wnd);
-			SendMessage(wnd, COMMAND, ID_DELETETEXT, 0);
-			SendMessage(wnd, PAINT, 0, 0);
-			return TRUE;
-		case ID_COPY:
-			CopyToClipboard(wnd);
-			ClearTextBlock(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
-			return TRUE;
-		case ID_PASTE:
-			PasteFromClipboard(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
-			return TRUE;
-        case ID_DELETETEXT:
+        case DF_ID_DELETETEXT:
             DeleteTextCmd(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
             return TRUE;
-        case ID_CLEAR:
+        case DF_ID_CLEAR:
             ClearCmd(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
             return TRUE;
-        case ID_UNDO:
+        case DF_ID_UNDO:
             UndoCmd(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
             return TRUE;
-        case ID_PARAGRAPH:
+        case DF_ID_PARAGRAPH:
             ParagraphCmd(wnd);
-			SendMessage(wnd, PAINT, 0, 0);
             return TRUE;
         default:
             break;
     }
     return FALSE;
 }
-/* ---------- CLOSE_WINDOW Message ----------- */
-static int CloseWindowMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ---------- DFM_CLOSE_WINDOW Message ----------- */
+static int CloseWindowMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
 	int rtn;
-    SendMessage(NULL, HIDE_CURSOR, 0, 0);
+    DfSendMessage(NULL, DFM_HIDE_CURSOR, 0, 0);
     if (wnd->DeletedText != NULL)
         free(wnd->DeletedText);
-    rtn = BaseWndProc(EDITBOX, wnd, CLOSE_WINDOW, p1, p2);
-	if (wnd->text != NULL)	{
+	if (wnd->text != NULL)
+	{
 		free(wnd->text);
 		wnd->text = NULL;
 	}
+    rtn = DfBaseWndProc(DF_EDITBOX, wnd, DFM_CLOSE_WINDOW, p1, p2);
     return rtn;
 }
-/* ------- Window processing module for EDITBOX class ------ */
-int EditBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
+
+/* ------- Window processing module for DF_EDITBOX class ------ */
+int DfEditBoxProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 {
     int rtn;
     switch (msg)    {
-        case CREATE_WINDOW:
+        case DFM_CREATE_WINDOW:
             return CreateWindowMsg(wnd);
-        case ADDTEXT:
+        case DFM_ADDTEXT:
             return AddTextMsg(wnd, p1, p2);
-        case SETTEXT:
+        case DFM_SETTEXT:
             return SetTextMsg(wnd, p1);
-        case CLEARTEXT:
+        case DFM_CLEARTEXT:
 			return ClearTextMsg(wnd);
-        case GETTEXT:
+        case DFM_GETTEXT:
             return GetTextMsg(wnd, p1, p2);
-        case SETTEXTLENGTH:
+        case DFM_SETTEXTLENGTH:
             return SetTextLengthMsg(wnd, (unsigned) p1);
-        case KEYBOARD_CURSOR:
+        case DFM_KEYBOARD_CURSOR:
             KeyboardCursorMsg(wnd, p1, p2);
 			return TRUE;
-        case SETFOCUS:
+        case DFM_SETFOCUS:
 			if (!(int)p1)
-				SendMessage(NULL, HIDE_CURSOR, 0, 0);
-        case PAINT:
-        case MOVE:
-            rtn = BaseWndProc(EDITBOX, wnd, msg, p1, p2);
-            SendMessage(wnd,KEYBOARD_CURSOR,WndCol,wnd->WndRow);
+				DfSendMessage(NULL, DFM_HIDE_CURSOR, 0, 0);
+        case DFM_PAINT:
+        case DFM_MOVE:
+            rtn = DfBaseWndProc(DF_EDITBOX, wnd, msg, p1, p2);
+            DfSendMessage(wnd,DFM_KEYBOARD_CURSOR,DfWndCol,wnd->WndRow);
             return rtn;
-        case SIZE:
+        case DFM_DFM_SIZE:
             return SizeMsg(wnd, p1, p2);
-        case SCROLL:
+        case DFM_SCROLL:
             return ScrollMsg(wnd, p1);
-        case HORIZSCROLL:
+        case DFM_HORIZSCROLL:
             return HorizScrollMsg(wnd, p1);
-        case SCROLLPAGE:
+        case DFM_SCROLLPAGE:
             return ScrollPageMsg(wnd, p1);
-        case HORIZPAGE:
+        case DFM_HORIZPAGE:
             return HorizPageMsg(wnd, p1);
-        case LEFT_BUTTON:
+        case DFM_LEFT_BUTTON:
             if (LeftButtonMsg(wnd, p1, p2))
                 return TRUE;
             break;
@@ -949,183 +927,187 @@ int EditBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
             if (MouseMovedMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case BUTTON_RELEASED:
+        case DFM_BUTTON_RELEASED:
             if (ButtonReleasedMsg(wnd))
                 return TRUE;
             break;
-        case KEYBOARD:
+        case DFM_KEYBOARD:
             if (KeyboardMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case SHIFT_CHANGED:
+        case DFM_SHIFT_CHANGED:
             ShiftChangedMsg(wnd, p1);
             break;
-        case COMMAND:
+        case DFM_COMMAND:
             if (CommandMsg(wnd, p1))
                 return TRUE;
             break;
-        case CLOSE_WINDOW:
+        case DFM_CLOSE_WINDOW:
             return CloseWindowMsg(wnd, p1, p2);
         default:
             break;
     }
-    return BaseWndProc(EDITBOX, wnd, msg, p1, p2);
+    return DfBaseWndProc(DF_EDITBOX, wnd, msg, p1, p2);
 }
 /* ------ save deleted text for the Undo command ------ */
-static void SaveDeletedText(WINDOW wnd, char *bbl, int len)
+static void SaveDeletedText(DFWINDOW wnd, char *bbl, int len)
 {
     wnd->DeletedLength = len;
-    wnd->DeletedText=DFrealloc(wnd->DeletedText,len);
+    wnd->DeletedText=DfRealloc(wnd->DeletedText,len);
     memmove(wnd->DeletedText, bbl, len);
 }
-/* ---- cursor right key: right one character position ---- */
-static void Forward(WINDOW wnd)
+/* ---- DfCursor right key: right one character position ---- */
+static void Forward(DFWINDOW wnd)
 {
-    char *cc = CurrChar+1;
+    char *cc = DfCurrChar+1;
     if (*cc == '\0')
         return;
-    if (*CurrChar == '\n')    {
+    if (*DfCurrChar == '\n')    {
         Home(wnd);
         Downward(wnd);
     }
     else    {
         wnd->CurrCol++;
-        if (WndCol == ClientWidth(wnd))
-            SendMessage(wnd, HORIZSCROLL, TRUE, 0);
+        if (DfWndCol == DfClientWidth(wnd))
+            DfSendMessage(wnd, DFM_HORIZSCROLL, TRUE, 0);
     }
 }
-/* ----- stick the moving cursor to the end of the line ---- */
-static void StickEnd(WINDOW wnd)
+/* ----- stick the moving DfCursor to the end of the line ---- */
+static void StickEnd(DFWINDOW wnd)
 {
-    char *cp = TextLine(wnd, wnd->CurrLine);
+    char *cp = DfTextLine(wnd, wnd->CurrLine);
     char *cp1 = strchr(cp, '\n');
     int len = cp1 ? (int) (cp1 - cp) : 0;
     wnd->CurrCol = min(len, wnd->CurrCol);
     if (wnd->wleft > wnd->CurrCol)    {
         wnd->wleft = max(0, wnd->CurrCol - 4);
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
-    else if (wnd->CurrCol-wnd->wleft >= ClientWidth(wnd))    {
-        wnd->wleft = wnd->CurrCol - (ClientWidth(wnd)-1);
-        SendMessage(wnd, PAINT, 0, 0);
+    else if (wnd->CurrCol-wnd->wleft >= DfClientWidth(wnd))    {
+        wnd->wleft = wnd->CurrCol - (DfClientWidth(wnd)-1);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
 }
-/* --------- cursor down key: down one line --------- */
-static void Downward(WINDOW wnd)
+/* --------- DfCursor down key: down one line --------- */
+static void Downward(DFWINDOW wnd)
 {
-    if (isMultiLine(wnd) &&
+    if (DfIsMultiLine(wnd) &&
             wnd->WndRow+wnd->wtop+1 < wnd->wlines)  {
         wnd->CurrLine++;
-        if (wnd->WndRow == ClientHeight(wnd)-1)
-			SendMessage(wnd, SCROLL, TRUE, 0);
-        wnd->WndRow++;
+        if (wnd->WndRow == DfClientHeight(wnd)-1)
+            DfBaseWndProc(DF_EDITBOX, wnd, DFM_SCROLL, TRUE, 0);
+        else
+            wnd->WndRow++;
         StickEnd(wnd);
     }
 }
-/* -------- cursor up key: up one line ------------ */
-static void Upward(WINDOW wnd)
+/* -------- DfCursor up key: up one line ------------ */
+static void Upward(DFWINDOW wnd)
 {
-    if (isMultiLine(wnd) && wnd->CurrLine != 0)    {
+    if (DfIsMultiLine(wnd) && wnd->CurrLine != 0)    {
         --wnd->CurrLine;
         if (wnd->WndRow == 0)
-			SendMessage(wnd, SCROLL, FALSE, 0);
-        --wnd->WndRow;
+            DfBaseWndProc(DF_EDITBOX, wnd, DFM_SCROLL, FALSE, 0);
+        else
+            --wnd->WndRow;
         StickEnd(wnd);
     }
 }
-/* ---- cursor left key: left one character position ---- */
-static void Backward(WINDOW wnd)
+/* ---- DfCursor left key: left one character position ---- */
+static void Backward(DFWINDOW wnd)
 {
     if (wnd->CurrCol)    {
         --wnd->CurrCol;
         if (wnd->CurrCol < wnd->wleft)
-            SendMessage(wnd, HORIZSCROLL, FALSE, 0);
+            DfSendMessage(wnd, DFM_HORIZSCROLL, FALSE, 0);
     }
-    else if (isMultiLine(wnd) && wnd->CurrLine != 0)    {
+    else if (DfIsMultiLine(wnd) && wnd->CurrLine != 0)    {
         Upward(wnd);
         End(wnd);
     }
 }
 /* -------- End key: to end of line ------- */
-static void End(WINDOW wnd)
+static void End(DFWINDOW wnd)
 {
-    while (*CurrChar && *CurrChar != '\n')
+    while (*DfCurrChar && *DfCurrChar != '\n')
         ++wnd->CurrCol;
-    if (WndCol >= ClientWidth(wnd))    {
-        wnd->wleft = wnd->CurrCol - (ClientWidth(wnd)-1);
-        SendMessage(wnd, PAINT, 0, 0);
+    if (DfWndCol >= DfClientWidth(wnd))    {
+        wnd->wleft = wnd->CurrCol - (DfClientWidth(wnd)-1);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
 }
 /* -------- Home key: to beginning of line ------- */
-static void Home(WINDOW wnd)
+static void Home(DFWINDOW wnd)
 {
     wnd->CurrCol = 0;
     if (wnd->wleft != 0)    {
         wnd->wleft = 0;
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
     }
 }
-/* -- Ctrl+cursor right key: to beginning of next word -- */
-static void NextWord(WINDOW wnd)
+/* -- Ctrl+DfCursor right key: to beginning of next word -- */
+static void NextWord(DFWINDOW wnd)
 {
     int savetop = wnd->wtop;
     int saveleft = wnd->wleft;
-    ClearVisible(wnd);
-    while (!isWhite(*CurrChar))    {
-        char *cc = CurrChar+1;
+    DfClearVisible(wnd);
+    while (!isWhite(*DfCurrChar))    {
+        char *cc = DfCurrChar+1;
         if (*cc == '\0')
             break;
         Forward(wnd);
     }
-    while (isWhite(*CurrChar))    {
-        char *cc = CurrChar+1;
+    while (isWhite(*DfCurrChar))    {
+        char *cc = DfCurrChar+1;
         if (*cc == '\0')
             break;
         Forward(wnd);
     }
-    SetVisible(wnd);
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSetVisible(wnd);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     if (wnd->wtop != savetop || wnd->wleft != saveleft)
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
-/* -- Ctrl+cursor left key: to beginning of previous word -- */
-static void PrevWord(WINDOW wnd)
+/* -- Ctrl+DfCursor left key: to beginning of previous word -- */
+static void PrevWord(DFWINDOW wnd)
 {
     int savetop = wnd->wtop;
     int saveleft = wnd->wleft;
-    ClearVisible(wnd);
+    DfClearVisible(wnd);
     Backward(wnd);
-    while (isWhite(*CurrChar))    {
+    while (isWhite(*DfCurrChar))    {
         if (wnd->CurrLine == 0 && wnd->CurrCol == 0)
             break;
         Backward(wnd);
     }
-    while (wnd->CurrCol != 0 && !isWhite(*CurrChar))
+    while (wnd->CurrCol != 0 && !isWhite(*DfCurrChar))
         Backward(wnd);
-    if (isWhite(*CurrChar))
+    if (isWhite(*DfCurrChar))
         Forward(wnd);
-    SetVisible(wnd);
+    DfSetVisible(wnd);
     if (wnd->wleft != saveleft)
         if (wnd->CurrCol >= saveleft)
-            if (wnd->CurrCol - saveleft < ClientWidth(wnd))
+            if (wnd->CurrCol - saveleft < DfClientWidth(wnd))
                 wnd->wleft = saveleft;
-    SendMessage(wnd, KEYBOARD_CURSOR, WndCol, wnd->WndRow);
+    DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, DfWndCol, wnd->WndRow);
     if (wnd->wtop != savetop || wnd->wleft != saveleft)
-        SendMessage(wnd, PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
 /* ----- modify text pointers from a specified position
                 by a specified plus or minus amount ----- */
-static void ModTextPointers(WINDOW wnd, int lineno, int var)
+static void ModTextPointers(DFWINDOW wnd, int lineno, int var)
 {
     while (lineno < wnd->wlines)
         *((wnd->TextPointers) + lineno++) += var;
 }
 /* ----- set anchor point for marking text block ----- */
-static void SetAnchor(WINDOW wnd, int mx, int my)
+static void SetAnchor(DFWINDOW wnd, int mx, int my)
 {
-    ClearTextBlock(wnd);
+    DfClearTextBlock(wnd);
     /* ------ set the anchor ------ */
     wnd->BlkBegLine = wnd->BlkEndLine = my;
     wnd->BlkBegCol = wnd->BlkEndCol = mx;
-    SendMessage(wnd, PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
+
+/* EOF */

@@ -3,392 +3,403 @@
 #include "dflat.h"
 
 #ifdef INCLUDE_MULTI_WINDOWS
-static void near PaintOverLappers(WINDOW wnd);
-static void near PaintUnderLappers(WINDOW wnd);
+static void PaintOverLappers(DFWINDOW wnd);
+static void PaintUnderLappers(DFWINDOW wnd);
 #endif
 
-static BOOL InsideWindow(WINDOW, int, int);
+static BOOL InsideWindow(DFWINDOW, int, int);
 static void TerminateMoveSize(void);
-static void SaveBorder(RECT);
-static void RestoreBorder(RECT);
-static void GetVideoBuffer(WINDOW);
-static void PutVideoBuffer(WINDOW);
+static void SaveBorder(DFRECT);
+static void RestoreBorder(DFRECT);
+static void GetVideoBuffer(DFWINDOW);
+static void PutVideoBuffer(DFWINDOW);
 #ifdef INCLUDE_MINIMIZE
-static RECT PositionIcon(WINDOW);
+static DFRECT PositionIcon(DFWINDOW);
 #endif
-static void near dragborder(WINDOW, int, int);
-static void near sizeborder(WINDOW, int, int);
+static void dragborder(DFWINDOW, int, int);
+static void sizeborder(DFWINDOW, int, int);
 static int px = -1, py = -1;
 static int diff;
-static struct window dwnd = {DUMMY, NULL, NormalProc,
+static struct DfWindow dwnd = {DF_DUMMY, NULL, DfNormalProc,
                                 {-1,-1,-1,-1}};
-static short *Bsave;
+static PCHAR_INFO Bsave;
 static int Bht, Bwd;
-BOOL WindowMoving;
-BOOL WindowSizing;
+BOOL DfWindowMoving;
+BOOL DfWindowSizing;
 /* -------- array of class definitions -------- */
-CLASSDEFS classdefs[] = {
-    #undef ClassDef
-    #define ClassDef(c,b,p,a) {b,p,a},
+DFCLASSDEFS DfClassDefs[] = {
+    #undef DfClassDef
+    #define DfClassDef(c,b,p,a) {b,p,a},
     #include "classes.h"
 };
-WINDOW HiddenWindow;
+DFWINDOW HiddenWindow;
 
-/* --------- CREATE_WINDOW Message ---------- */
-static void CreateWindowMsg(WINDOW wnd)
+/* --------- DFM_CREATE_WINDOW Message ---------- */
+static void CreateWindowMsg(DFWINDOW wnd)
 {
-    AppendWindow(wnd);
-    if (!SendMessage(NULL, MOUSE_INSTALLED, 0, 0))
-        ClearAttribute(wnd, VSCROLLBAR | HSCROLLBAR);
-    if (TestAttribute(wnd, SAVESELF) && isVisible(wnd))
-        GetVideoBuffer(wnd);
+	DfAppendWindow(wnd);
+//	DfClearAttribute(wnd, DF_VSCROLLBAR | DF_HSCROLLBAR);
+	if (DfTestAttribute(wnd, DF_SAVESELF) && DfIsVisible(wnd))
+		GetVideoBuffer(wnd);
 }
 
-/* --------- SHOW_WINDOW Message ---------- */
-static void ShowWindowMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* --------- DFM_SHOW_WINDOW Message ---------- */
+static void ShowWindowMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    if (GetParent(wnd) == NULL || isVisible(GetParent(wnd)))    {
-		WINDOW cwnd;
-        if (TestAttribute(wnd, SAVESELF) &&
-                        wnd->videosave == NULL)
-            GetVideoBuffer(wnd);
-        SetVisible(wnd);
-        SendMessage(wnd, PAINT, 0, TRUE);
-        SendMessage(wnd, BORDER, 0, 0);
-        /* --- show the children of this window --- */
-		cwnd = FirstWindow(wnd);
-		while (cwnd != NULL)	{
-            if (cwnd->condition != ISCLOSING)
-                SendMessage(cwnd, SHOW_WINDOW, p1, p2);
-			cwnd = NextWindow(cwnd);
-        }
-    }
+	if (DfGetParent(wnd) == NULL || DfIsVisible(DfGetParent(wnd)))
+	{
+		DFWINDOW cwnd;
+
+		if (DfTestAttribute(wnd, DF_SAVESELF) && wnd->videosave == NULL)
+			GetVideoBuffer(wnd);
+		DfSetVisible(wnd);
+		DfSendMessage(wnd, DFM_PAINT, 0, TRUE);
+		DfSendMessage(wnd, DFM_BORDER, 0, 0);
+		/* --- show the children of this window --- */
+		cwnd = DfFirstWindow(wnd);
+		while (cwnd != NULL)
+		{
+			if (cwnd->condition != DF_ISCLOSING)
+				DfSendMessage(cwnd, DFM_SHOW_WINDOW, p1, p2);
+			cwnd = DfNextWindow(cwnd);
+		}
+	}
 }
 
 /* --------- HIDE_WINDOW Message ---------- */
-static void HideWindowMsg(WINDOW wnd)
+static void HideWindowMsg(DFWINDOW wnd)
 {
-    if (isVisible(wnd))    {
-        ClearVisible(wnd);
-        /* --- paint what this window covered --- */
-	    if (TestAttribute(wnd, SAVESELF))
-            PutVideoBuffer(wnd);
+	if (DfIsVisible(wnd))
+	{
+		DfClearVisible(wnd);
+		/* --- paint what this window covered --- */
+		if (DfTestAttribute(wnd, DF_SAVESELF))
+			PutVideoBuffer(wnd);
 #ifdef INCLUDE_MULTI_WINDOWS
-        else
-            PaintOverLappers(wnd);
+		else
+			PaintOverLappers(wnd);
 #endif
-		wnd->wasCleared = FALSE;
     }
 }
 
-/* --------- KEYBOARD Message ---------- */
-static BOOL KeyboardMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* --------- DFM_KEYBOARD Message ---------- */
+static BOOL KeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    if (WindowMoving || WindowSizing)    {
+    if (DfWindowMoving || DfWindowSizing)    {
         /* -- move or size a window with keyboard -- */
         int x, y;
-        x=WindowMoving?GetLeft(&dwnd):GetRight(&dwnd);
-        y=WindowMoving?GetTop(&dwnd):GetBottom(&dwnd);
+        x=DfWindowMoving?DfGetLeft(&dwnd):DfGetRight(&dwnd);
+        y=DfWindowMoving?DfGetTop(&dwnd):DfGetBottom(&dwnd);
         switch ((int)p1)    {
-            case ESC:
+            case DF_ESC:
                 TerminateMoveSize();
                 return TRUE;
-            case UP:
+            case DF_UP:
                 if (y)
                     --y;
                 break;
-            case DN:
-                if (y < SCREENHEIGHT-1)
+            case DF_DN:
+                if (y < DfGetScreenHeight()-1)
                     y++;
                 break;
-            case FWD:
-                if (x < SCREENWIDTH-1)
+            case DF_FWD:
+                if (x < DfGetScreenWidth()-1)
                     x++;
                 break;
-            case BS:
+            case DF_BS:
                 if (x)
                     --x;
                 break;
             case '\r':
-                SendMessage(wnd,BUTTON_RELEASED,x,y);
+                DfSendMessage(wnd, DFM_BUTTON_RELEASED,x,y);
             default:
                 return TRUE;
         }
         /* -- use the mouse functions to move/size - */
-        SendMessage(wnd, MOUSE_CURSOR, x, y);
-        SendMessage(wnd, MOUSE_MOVED, x, y);
+        DfSendMessage(wnd, MOUSE_MOVED, x, y);
         return TRUE;
     }
-    switch ((int)p1)    {
-        case F1:
-            SendMessage(wnd, COMMAND, ID_HELP, 0);
-            return TRUE;
-        case ' ':
-            if ((int)p2 & ALTKEY)
-                if (TestAttribute(wnd, HASTITLEBAR))
-                    if (TestAttribute(wnd, CONTROLBOX))
-                        BuildSystemMenu(wnd);
-            return TRUE;
-        case CTRL_F4:
-            if (TestAttribute(wnd, CONTROLBOX))	{
-            	SendMessage(wnd, CLOSE_WINDOW, 0, 0);
-				SkipApplicationControls();
-	            return TRUE;
+
+	switch ((int)p1)
+	{
+		case DF_F1:
+			DfSendMessage(wnd, DFM_COMMAND, DF_ID_HELP, 0);
+			return TRUE;
+
+		case ' ':
+			if ((int)p2 & DF_ALTKEY)
+				if (DfTestAttribute(wnd, DF_HASTITLEBAR))
+					if (DfTestAttribute(wnd, DF_CONTROLBOX))
+						DfBuildSystemMenu(wnd);
+			return TRUE;
+
+		case DF_CTRL_F4:
+			if (DfTestAttribute(wnd, DF_CONTROLBOX))
+			{
+				DfSendMessage(wnd, DFM_CLOSE_WINDOW, 0, 0);
+				DfSkipApplicationControls();
+				return TRUE;
 			}
 			break;
-        default:
-            break;
-    }
-    return FALSE;
+
+		default:
+			break;
+	}
+
+	return FALSE;
 }
 
 /* --------- COMMAND Message ---------- */
-static void CommandMsg(WINDOW wnd, PARAM p1)
+static void CommandMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     switch ((int)p1)    {
-        case ID_HELP:
-            DisplayHelp(wnd,ClassNames[GetClass(wnd)]);
+        case DF_ID_HELP:
+            DfDisplayHelp(wnd,DfClassNames[DfGetClass(wnd)]);
             break;
 #ifdef INCLUDE_RESTORE
-        case ID_SYSRESTORE:
-            SendMessage(wnd, RESTORE, 0, 0);
+        case DF_ID_SYSRESTORE:
+            DfSendMessage(wnd, DFM_RESTORE, 0, 0);
             break;
 #endif
-        case ID_SYSMOVE:
-            SendMessage(wnd, CAPTURE_MOUSE, TRUE,
-                (PARAM) &dwnd);
-            SendMessage(wnd, CAPTURE_KEYBOARD, TRUE,
-                (PARAM) &dwnd);
-            SendMessage(wnd, MOUSE_CURSOR,
-                GetLeft(wnd), GetTop(wnd));
-            WindowMoving = TRUE;
-            dragborder(wnd, GetLeft(wnd), GetTop(wnd));
+        case DF_ID_SYSMOVE:
+            DfSendMessage(wnd, DFM_CAPTURE_MOUSE, TRUE,
+                (DF_PARAM) &dwnd);
+            DfSendMessage(wnd, DFM_CAPTURE_KEYBOARD, TRUE,
+                (DF_PARAM) &dwnd);
+            DfWindowMoving = TRUE;
+            dragborder(wnd, DfGetLeft(wnd), DfGetTop(wnd));
             break;
-        case ID_SYSSIZE:
-            SendMessage(wnd, CAPTURE_MOUSE, TRUE,
-                (PARAM) &dwnd);
-            SendMessage(wnd, CAPTURE_KEYBOARD, TRUE,
-                (PARAM) &dwnd);
-            SendMessage(wnd, MOUSE_CURSOR,
-                GetRight(wnd), GetBottom(wnd));
-            WindowSizing = TRUE;
-            dragborder(wnd, GetLeft(wnd), GetTop(wnd));
+        case DF_ID_SYSSIZE:
+            DfSendMessage(wnd, DFM_CAPTURE_MOUSE, TRUE,
+                (DF_PARAM) &dwnd);
+            DfSendMessage(wnd, DFM_CAPTURE_KEYBOARD, TRUE,
+                (DF_PARAM) &dwnd);
+            DfWindowSizing = TRUE;
+            dragborder(wnd, DfGetLeft(wnd), DfGetTop(wnd));
             break;
 #ifdef INCLUDE_MINIMIZE
-        case ID_SYSMINIMIZE:
-            SendMessage(wnd, MINIMIZE, 0, 0);
+        case DF_ID_SYSMINIMIZE:
+            DfSendMessage(wnd, DFM_MINIMIZE, 0, 0);
             break;
 #endif
 #ifdef INCLUDE_MAXIMIZE
-        case ID_SYSMAXIMIZE:
-            SendMessage(wnd, MAXIMIZE, 0, 0);
+        case DF_ID_SYSMAXIMIZE:
+            DfSendMessage(wnd, DFM_MAXIMIZE, 0, 0);
             break;
 #endif
-        case ID_SYSCLOSE:
-            SendMessage(wnd, CLOSE_WINDOW, 0, 0);
-			SkipApplicationControls();
+        case DF_ID_SYSCLOSE:
+            DfSendMessage(wnd, DFM_CLOSE_WINDOW, 0, 0);
+			DfSkipApplicationControls();
             break;
         default:
             break;
     }
 }
 
-/* --------- SETFOCUS Message ---------- */
-static void SetFocusMsg(WINDOW wnd, PARAM p1)
+/* --------- DFM_SETFOCUS Message ---------- */
+static void SetFocusMsg(DFWINDOW wnd, DF_PARAM p1)
 {
-	RECT rc = {0,0,0,0};
-    if (p1 && wnd != NULL && inFocus != wnd)    {
-		WINDOW This, thispar;
-		WINDOW that = NULL, thatpar = NULL;
+	DFRECT rc = {0,0,0,0};
 
-		WINDOW cwnd = wnd, fwnd = GetParent(wnd);
+	if (p1 && wnd != NULL && DfInFocus != wnd)
+	{
+		DFWINDOW this, thispar;
+		DFWINDOW that = NULL, thatpar = NULL;
+
+		DFWINDOW cwnd = wnd, fwnd = DfGetParent(wnd);
 		/* ---- post focus in ancestors ---- */
-		while (fwnd != NULL)	{
+		while (fwnd != NULL)
+		{
 			fwnd->childfocus = cwnd;
 			cwnd = fwnd;
-			fwnd = GetParent(fwnd);
+			fwnd = DfGetParent(fwnd);
 		}
 		/* ---- de-post focus in self and children ---- */
 		fwnd = wnd;
-		while (fwnd != NULL)	{
+		while (fwnd != NULL)
+		{
 			cwnd = fwnd->childfocus;
 			fwnd->childfocus = NULL;
 			fwnd = cwnd;
 		}
 
-		This = wnd;
-		that = thatpar = inFocus;
+		this = wnd;
+		that = thatpar = DfInFocus;
 
 		/* ---- find common ancestor of prev focus and this window --- */
-		while (thatpar != NULL)	{
+		while (thatpar != NULL)
+		{
 			thispar = wnd;
-			while (thispar != NULL)	{
-				if (This == CaptureMouse || This == CaptureKeyboard)	{
+			while (thispar != NULL)
+			{
+				if (this == DfCaptureMouse || this == DfCaptureKeyboard)
+				{
 					/* ---- don't repaint if this window has capture ---- */
 					that = thatpar = NULL;
 					break;
 				}
-				if (thispar == thatpar)	{
-					/* ---- don't repaint if SAVESELF window had focus ---- */
-					if (This != that && TestAttribute(that, SAVESELF))
+				if (thispar == thatpar)
+				{
+					/* ---- don't repaint if DF_SAVESELF window had focus ---- */
+					if (this != that && DfTestAttribute(that, DF_SAVESELF))
 						that = thatpar = NULL;
 					break;
 				}
-				This = thispar;
-				thispar = GetParent(thispar);
+				this = thispar;
+				thispar = DfGetParent(thispar);
 			}
 			if (thispar != NULL)
 				break;
 			that = thatpar;
-			thatpar = GetParent(thatpar);
+			thatpar = DfGetParent(thatpar);
 		}
-		if (inFocus != NULL)
-	        SendMessage(inFocus, SETFOCUS, FALSE, 0);
-        inFocus = wnd;
-		if (that != NULL && isVisible(wnd))	{
-			rc = subRectangle(WindowRect(that), WindowRect(This));
-			if (!ValidRect(rc))	{
-				if (ApplicationWindow != NULL)	{
-					WINDOW fwnd = FirstWindow(ApplicationWindow);
-					while (fwnd != NULL)	{
-						if (!isAncestor(wnd, fwnd))	{
-							rc = subRectangle(WindowRect(wnd),WindowRect(fwnd));
-							if (ValidRect(rc))
+		if (DfInFocus != NULL)
+			DfSendMessage(DfInFocus, DFM_SETFOCUS, FALSE, 0);
+		DfInFocus = wnd;
+		if (that != NULL && DfIsVisible(wnd))
+		{
+			rc = DfSubRectangle(DfWindowRect(that), DfWindowRect(this));
+			if (!DfValidRect(rc))
+			{
+				if (DfApplicationWindow != NULL)
+				{
+					DFWINDOW fwnd = DfFirstWindow(DfApplicationWindow);
+					while (fwnd != NULL)
+					{
+						if (!DfIsAncestor(wnd, fwnd))
+						{
+							rc = DfSubRectangle(DfWindowRect(wnd),DfWindowRect(fwnd));
+							if (DfValidRect(rc))
 								break;
 						}
-						fwnd = NextWindow(fwnd);
+						fwnd = DfNextWindow(fwnd);
 					}
 				}
 			}
 		}
-		if (that != NULL && !ValidRect(rc) && isVisible(wnd))
-			This = NULL;
-		ReFocus(wnd);
-		if (This != NULL &&
-				(!isVisible(This) || !TestAttribute(This, SAVESELF)))	{
-			wnd->wasCleared = FALSE;
-	        SendMessage(This, SHOW_WINDOW, 0, 0);
+		if (that != NULL && !DfValidRect(rc) && DfIsVisible(wnd))
+		{
+			DfSendMessage(wnd, DFM_BORDER, 0, 0);
+			this = NULL;
 		}
-		else if (!isVisible(wnd))
-	        SendMessage(wnd, SHOW_WINDOW, 0, 0);
-		else 
-		    SendMessage(wnd, BORDER, 0, 0);
-    }
-    else if (!p1 && inFocus == wnd)    {
-        /* -------- clearing focus --------- */
-        inFocus = NULL;
-        SendMessage(wnd, BORDER, 0, 0);
-    }
+		DfReFocus(wnd);
+		if (this != NULL)
+		DfSendMessage(this, DFM_SHOW_WINDOW, 0, 0);
+	}
+	else if (!p1 && DfInFocus == wnd)
+	{
+		/* clearing focus */
+		DfInFocus = NULL;
+		DfSendMessage(wnd, DFM_BORDER, 0, 0);
+	}
 }
 
 /* --------- DOUBLE_CLICK Message ---------- */
-static void DoubleClickMsg(WINDOW wnd, PARAM p1, PARAM p2)
+static void DoubleClickMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int mx = (int) p1 - GetLeft(wnd);
-    int my = (int) p2 - GetTop(wnd);
-    if (!WindowSizing && !WindowMoving)	{
-        if (HitControlBox(wnd, mx, my))	{
-            PostMessage(wnd, CLOSE_WINDOW, 0, 0);
-			SkipApplicationControls();
+    int mx = (int) p1 - DfGetLeft(wnd);
+    int my = (int) p2 - DfGetTop(wnd);
+    if (!DfWindowSizing && !DfWindowMoving)	{
+        if (DfHitControlBox(wnd, mx, my))	{
+            DfPostMessage(wnd, DFM_CLOSE_WINDOW, 0, 0);
+			DfSkipApplicationControls();
 		}
 	}
 }
 
-/* --------- LEFT_BUTTON Message ---------- */
-static void LeftButtonMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* --------- DFM_LEFT_BUTTON Message ---------- */
+static void LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int mx = (int) p1 - GetLeft(wnd);
-    int my = (int) p2 - GetTop(wnd);
-    if (WindowSizing || WindowMoving)
+    int mx = (int) p1 - DfGetLeft(wnd);
+    int my = (int) p2 - DfGetTop(wnd);
+    if (DfWindowSizing || DfWindowMoving)
         return;
-    if (HitControlBox(wnd, mx, my))    {
-        BuildSystemMenu(wnd);
+    if (DfHitControlBox(wnd, mx, my))    {
+        DfBuildSystemMenu(wnd);
         return;
     }
-    if (my == 0 && mx > -1 && mx < WindowWidth(wnd))  {
+    if (my == 0 && mx > -1 && mx < DfWindowWidth(wnd))  {
         /* ---------- hit the top border -------- */
-        if (TestAttribute(wnd, MINMAXBOX) &&
-                TestAttribute(wnd, HASTITLEBAR))  {
-            if (mx == WindowWidth(wnd)-2)    {
-                if (wnd->condition != ISRESTORED)
+        if (DfTestAttribute(wnd, DF_MINMAXBOX) &&
+                DfTestAttribute(wnd, DF_HASTITLEBAR))  {
+            if (mx == DfWindowWidth(wnd)-2)    {
+                if (wnd->condition != DF_SRESTORED)
                     /* --- hit the restore box --- */
-                    SendMessage(wnd, RESTORE, 0, 0);
+                    DfSendMessage(wnd, DFM_RESTORE, 0, 0);
 #ifdef INCLUDE_MAXIMIZE
                 else
                     /* --- hit the maximize box --- */
-                    SendMessage(wnd, MAXIMIZE, 0, 0);
+                    DfSendMessage(wnd, DFM_MAXIMIZE, 0, 0);
 #endif
                 return;
             }
 #ifdef INCLUDE_MINIMIZE
-            if (mx == WindowWidth(wnd)-3)    {
+            if (mx == DfWindowWidth(wnd)-3)    {
                 /* --- hit the minimize box --- */
-                if (wnd->condition != ISMINIMIZED)
-                    SendMessage(wnd, MINIMIZE, 0, 0);
+                if (wnd->condition != DF_ISMINIMIZED)
+                    DfSendMessage(wnd, DFM_MINIMIZE, 0, 0);
                 return;
             }
 #endif
         }
 #ifdef INCLUDE_MAXIMIZE
-        if (wnd->condition == ISMAXIMIZED)
+        if (wnd->condition == DF_ISMAXIMIZED)
             return;
 #endif
-        if (TestAttribute(wnd, MOVEABLE))    {
-            WindowMoving = TRUE;
+        if (DfTestAttribute(wnd, DF_MOVEABLE))    {
+            DfWindowMoving = TRUE;
             px = mx;
             py = my;
             diff = (int) mx;
-            SendMessage(wnd, CAPTURE_MOUSE, TRUE,
-                (PARAM) &dwnd);
-            dragborder(wnd, GetLeft(wnd), GetTop(wnd));
+            DfSendMessage(wnd, DFM_CAPTURE_MOUSE, TRUE,
+                (DF_PARAM) &dwnd);
+            dragborder(wnd, DfGetLeft(wnd), DfGetTop(wnd));
         }
         return;
     }
-    if (mx == WindowWidth(wnd)-1 &&
-            my == WindowHeight(wnd)-1)    {
+    if (mx == DfWindowWidth(wnd)-1 &&
+            my == DfWindowHeight(wnd)-1)    {
         /* ------- hit the resize corner ------- */
 #ifdef INCLUDE_MINIMIZE
-        if (wnd->condition == ISMINIMIZED)
+        if (wnd->condition == DF_ISMINIMIZED)
             return;
 #endif
-        if (!TestAttribute(wnd, SIZEABLE))
+        if (!DfTestAttribute(wnd, DF_SIZEABLE))
             return;
 #ifdef INCLUDE_MAXIMIZE
-        if (wnd->condition == ISMAXIMIZED)    {
-            if (GetParent(wnd) == NULL)
+        if (wnd->condition == DF_ISMAXIMIZED)    {
+            if (DfGetParent(wnd) == NULL)
                 return;
-            if (TestAttribute(GetParent(wnd),HASBORDER))
+            if (DfTestAttribute(DfGetParent(wnd),DF_HASBORDER))
                 return;
             /* ----- resizing a maximized window over a
                     borderless parent ----- */
-            wnd = GetParent(wnd);
-	        if (!TestAttribute(wnd, SIZEABLE))
-    	        return;
+            wnd = DfGetParent(wnd);
         }
 #endif
-        WindowSizing = TRUE;
-        SendMessage(wnd, CAPTURE_MOUSE,
-            TRUE, (PARAM) &dwnd);
-        dragborder(wnd, GetLeft(wnd), GetTop(wnd));
+        DfWindowSizing = TRUE;
+        DfSendMessage(wnd, DFM_CAPTURE_MOUSE,
+            TRUE, (DF_PARAM) &dwnd);
+        dragborder(wnd, DfGetLeft(wnd), DfGetTop(wnd));
     }
 }
 
 /* --------- MOUSE_MOVED Message ---------- */
-static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
+static BOOL MouseMovedMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    if (WindowMoving)    {
+    if (DfWindowMoving)    {
         int leftmost = 0, topmost = 0,
-            bottommost = SCREENHEIGHT-2,
-            rightmost = SCREENWIDTH-2;
+            bottommost = DfGetScreenHeight()-2,
+            rightmost = DfGetScreenWidth()-2;
         int x = (int) p1 - diff;
         int y = (int) p2;
-        if (GetParent(wnd) != NULL &&
-                !TestAttribute(wnd, NOCLIP))    {
-            WINDOW wnd1 = GetParent(wnd);
-            topmost    = GetClientTop(wnd1);
-            leftmost   = GetClientLeft(wnd1);
-            bottommost = GetClientBottom(wnd1);
-            rightmost  = GetClientRight(wnd1);
+        if (DfGetParent(wnd) != NULL &&
+                !DfTestAttribute(wnd, DF_NOCLIP))    {
+            DFWINDOW wnd1 = DfGetParent(wnd);
+            topmost    = DfGetClientTop(wnd1);
+            leftmost   = DfGetClientLeft(wnd1);
+            bottommost = DfGetClientBottom(wnd1);
+            rightmost  = DfGetClientRight(wnd1);
         }
         if (x < leftmost || x > rightmost ||
                 y < topmost || y > bottommost)    {
@@ -396,8 +407,8 @@ static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
             x = min(x, rightmost);
             y = max(y, topmost);
             y = min(y, bottommost);
-            SendMessage(NULL,MOUSE_CURSOR,x+diff,y);
         }
+
         if (x != px || y != py)    {
             px = x;
             py = y;
@@ -405,7 +416,7 @@ static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
         }
         return TRUE;
     }
-    if (WindowSizing)    {
+    if (DfWindowSizing)    {
         sizeborder(wnd, (int) p1, (int) p2);
         return TRUE;
     }
@@ -413,295 +424,280 @@ static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
 }
 
 #ifdef INCLUDE_MAXIMIZE
-/* --------- MAXIMIZE Message ---------- */
-static void MaximizeMsg(WINDOW wnd)
+/* --------- DFM_MAXIMIZE Message ---------- */
+static void MaximizeMsg(DFWINDOW wnd)
 {
-    RECT rc = {0, 0, 0, 0};
-    RECT holdrc;
+    DFRECT rc = {0, 0, 0, 0};
+    DFRECT holdrc;
     holdrc = wnd->RestoredRC;
-    rc.rt = SCREENWIDTH-1;
-    rc.bt = SCREENHEIGHT-1;
-    if (GetParent(wnd))
-        rc = ClientRect(GetParent(wnd));
+    rc.rt = DfGetScreenWidth()-1;
+    rc.bt = DfGetScreenHeight()-1;
+    if (DfGetParent(wnd))
+        rc = DfClientRect(DfGetParent(wnd));
     wnd->oldcondition = wnd->condition;
-    wnd->condition = ISMAXIMIZED;
-	wnd->wasCleared = FALSE;
-    SendMessage(wnd, HIDE_WINDOW, 0, 0);
-    SendMessage(wnd, MOVE,
-        RectLeft(rc), RectTop(rc));
-    SendMessage(wnd, SIZE,
-        RectRight(rc), RectBottom(rc));
+    wnd->condition = DF_ISMAXIMIZED;
+    DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
+    DfSendMessage(wnd, DFM_MOVE,
+        DfRectLeft(rc), DfRectTop(rc));
+    DfSendMessage(wnd, DFM_DFM_SIZE,
+        DfRectRight(rc), DfRectBottom(rc));
     if (wnd->restored_attrib == 0)
         wnd->restored_attrib = wnd->attrib;
-    ClearAttribute(wnd, SHADOW);
-    SendMessage(wnd, SHOW_WINDOW, 0, 0);
+    DfClearAttribute(wnd, DF_SHADOW);
+    DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
     wnd->RestoredRC = holdrc;
 }
 #endif
 
 #ifdef INCLUDE_MINIMIZE
-/* --------- MINIMIZE Message ---------- */
-static void MinimizeMsg(WINDOW wnd)
+/* --------- DFM_MINIMIZE Message ---------- */
+static void MinimizeMsg(DFWINDOW wnd)
 {
-    RECT rc;
-    RECT holdrc;
+    DFRECT rc;
+    DFRECT holdrc;
 
     holdrc = wnd->RestoredRC;
     rc = PositionIcon(wnd);
     wnd->oldcondition = wnd->condition;
-    wnd->condition = ISMINIMIZED;
-	wnd->wasCleared = FALSE;
-    SendMessage(wnd, HIDE_WINDOW, 0, 0);
-    SendMessage(wnd, MOVE,
-        RectLeft(rc), RectTop(rc));
-    SendMessage(wnd, SIZE,
-        RectRight(rc), RectBottom(rc));
-	if (wnd == inFocus)
-	    SetNextFocus();
+    wnd->condition = DF_ISMINIMIZED;
+    DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
+    DfSendMessage(wnd, DFM_MOVE,
+        DfRectLeft(rc), DfRectTop(rc));
+    DfSendMessage(wnd, DFM_DFM_SIZE,
+        DfRectRight(rc), DfRectBottom(rc));
+	if (wnd == DfInFocus)
+	    DfSetNextFocus();
     if (wnd->restored_attrib == 0)
         wnd->restored_attrib = wnd->attrib;
-    ClearAttribute(wnd,
-        SHADOW | SIZEABLE | HASMENUBAR |
-        VSCROLLBAR | HSCROLLBAR);
-    SendMessage(wnd, SHOW_WINDOW, 0, 0);
+    DfClearAttribute(wnd,
+        DF_SHADOW | DF_SIZEABLE | DF_HASMENUBAR |
+        DF_VSCROLLBAR | DF_HSCROLLBAR);
+    DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
     wnd->RestoredRC = holdrc;
 }
 #endif
 
 #ifdef INCLUDE_RESTORE
-/* --------- RESTORE Message ---------- */
-static void RestoreMsg(WINDOW wnd)
+/* --------- DFM_RESTORE Message ---------- */
+static void RestoreMsg(DFWINDOW wnd)
 {
-    RECT holdrc;
+    DFRECT holdrc;
     holdrc = wnd->RestoredRC;
     wnd->oldcondition = wnd->condition;
-    wnd->condition = ISRESTORED;
-	wnd->wasCleared = FALSE;
-    SendMessage(wnd, HIDE_WINDOW, 0, 0);
+    wnd->condition = DF_SRESTORED;
+    DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
     wnd->attrib = wnd->restored_attrib;
     wnd->restored_attrib = 0;
-    SendMessage(wnd, MOVE, wnd->RestoredRC.lf,
+    DfSendMessage(wnd, DFM_MOVE, wnd->RestoredRC.lf,
         wnd->RestoredRC.tp);
     wnd->RestoredRC = holdrc;
-    SendMessage(wnd, SIZE, wnd->RestoredRC.rt,
+    DfSendMessage(wnd, DFM_DFM_SIZE, wnd->RestoredRC.rt,
         wnd->RestoredRC.bt);
-	if (wnd != inFocus)
-	    SendMessage(wnd, SETFOCUS, TRUE, 0);
+	if (wnd != DfInFocus)
+	    DfSendMessage(wnd, DFM_SETFOCUS, TRUE, 0);
 	else
-	    SendMessage(wnd, SHOW_WINDOW, 0, 0);
+	    DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
 }
 #endif
 
-/* --------- MOVE Message ---------- */
-static void MoveMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* --------- DFM_MOVE Message ---------- */
+static void MoveMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    WINDOW cwnd;
-    BOOL wasVisible = isVisible(wnd);
+    DFWINDOW cwnd;
+    BOOL wasVisible = DfIsVisible(wnd);
     int xdif = (int) p1 - wnd->rc.lf;
     int ydif = (int) p2 - wnd->rc.tp;
 
     if (xdif == 0 && ydif == 0)
         return;
-	wnd->wasCleared = FALSE;
     if (wasVisible)
-        SendMessage(wnd, HIDE_WINDOW, 0, 0);
+        DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
     wnd->rc.lf = (int) p1;
     wnd->rc.tp = (int) p2;
-    wnd->rc.rt = GetLeft(wnd)+WindowWidth(wnd)-1;
-    wnd->rc.bt = GetTop(wnd)+WindowHeight(wnd)-1;
-    if (wnd->condition == ISRESTORED)
+    wnd->rc.rt = DfGetLeft(wnd)+DfWindowWidth(wnd)-1;
+    wnd->rc.bt = DfGetTop(wnd)+DfWindowHeight(wnd)-1;
+    if (wnd->condition == DF_SRESTORED)
         wnd->RestoredRC = wnd->rc;
 
-	cwnd = FirstWindow(wnd);
+	cwnd = DfFirstWindow(wnd);
 	while (cwnd != NULL)	{
-        SendMessage(cwnd, MOVE, cwnd->rc.lf+xdif, cwnd->rc.tp+ydif);
-		cwnd = NextWindow(cwnd);
+        DfSendMessage(cwnd, DFM_MOVE, cwnd->rc.lf+xdif, cwnd->rc.tp+ydif);
+		cwnd = DfNextWindow(cwnd);
     }
     if (wasVisible)
-        SendMessage(wnd, SHOW_WINDOW, 0, 0);
+        DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
 }
 
 /* --------- SIZE Message ---------- */
-static void SizeMsg(WINDOW wnd, PARAM p1, PARAM p2)
+static void SizeMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    BOOL wasVisible = isVisible(wnd);
-    WINDOW cwnd;
-    RECT rc;
+    BOOL wasVisible = DfIsVisible(wnd);
+    DFWINDOW cwnd;
+    DFRECT rc;
     int xdif = (int) p1 - wnd->rc.rt;
     int ydif = (int) p2 - wnd->rc.bt;
 
     if (xdif == 0 && ydif == 0)
         return;
-	wnd->wasCleared = FALSE;
     if (wasVisible)
-        SendMessage(wnd, HIDE_WINDOW, 0, 0);
+        DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
     wnd->rc.rt = (int) p1;
     wnd->rc.bt = (int) p2;
-    wnd->ht = GetBottom(wnd)-GetTop(wnd)+1;
-    wnd->wd = GetRight(wnd)-GetLeft(wnd)+1;
+    wnd->ht = DfGetBottom(wnd)-DfGetTop(wnd)+1;
+    wnd->wd = DfGetRight(wnd)-DfGetLeft(wnd)+1;
 
-    if (wnd->condition == ISRESTORED)
-        wnd->RestoredRC = WindowRect(wnd);
+    if (wnd->condition == DF_SRESTORED)
+        wnd->RestoredRC = DfWindowRect(wnd);
 
 #ifdef INCLUDE_MAXIMIZE
-    rc = ClientRect(wnd);
+    rc = DfClientRect(wnd);
 
-	cwnd = FirstWindow(wnd);
+	cwnd = DfFirstWindow(wnd);
 	while (cwnd != NULL)	{
-        if (cwnd->condition == ISMAXIMIZED)
-            SendMessage(cwnd, SIZE, RectRight(rc), RectBottom(rc));
-		cwnd = NextWindow(cwnd);
+        if (cwnd->condition == DF_ISMAXIMIZED)
+            DfSendMessage(cwnd, DFM_DFM_SIZE, DfRectRight(rc), DfRectBottom(rc));
+		cwnd = DfNextWindow(cwnd);
     }
 
 #endif
     if (wasVisible)
-        SendMessage(wnd, SHOW_WINDOW, 0, 0);
+        DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
 }
 
-/* --------- CLOSE_WINDOW Message ---------- */
-static void CloseWindowMsg(WINDOW wnd)
+/* --------- DFM_CLOSE_WINDOW Message ---------- */
+static void CloseWindowMsg(DFWINDOW wnd)
 {
-    WINDOW cwnd;
-    wnd->condition = ISCLOSING;
+    DFWINDOW cwnd;
+    wnd->condition = DF_ISCLOSING;
+    if (wnd->PrevMouse != NULL)
+        DfSendMessage(wnd, DFM_RELEASE_MOUSE, 0, 0);
+    if (wnd->PrevKeyboard != NULL)
+        DfSendMessage(wnd, DFM_RELEASE_KEYBOARD, 0, 0);
     /* ----------- hide this window ------------ */
-    SendMessage(wnd, HIDE_WINDOW, 0, 0);
-
+    DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
     /* --- close the children of this window --- */
-	cwnd = LastWindow(wnd);
+
+	cwnd = DfLastWindow(wnd);
 	while (cwnd != NULL)	{
-        if (inFocus == cwnd)
-            inFocus = wnd;
-        SendMessage(cwnd,CLOSE_WINDOW,0,0);
-		cwnd = LastWindow(wnd);
+        if (DfInFocus == cwnd)
+            DfInFocus = wnd;
+        DfSendMessage(cwnd,DFM_CLOSE_WINDOW,0,0);
+		cwnd = DfLastWindow(wnd);
     }
 
-	/* ----- release captured resources ------ */
-    if (wnd->PrevClock != NULL)
-        SendMessage(wnd, RELEASE_CLOCK, 0, 0);
-    if (wnd->PrevMouse != NULL)
-        SendMessage(wnd, RELEASE_MOUSE, 0, 0);
-    if (wnd->PrevKeyboard != NULL)
-        SendMessage(wnd, RELEASE_KEYBOARD, 0, 0);
-
     /* --- change focus if this window had it -- */
-	if (wnd == inFocus)
-	    SetPrevFocus();
+	if (wnd == DfInFocus)
+	    DfSetPrevFocus();
     /* -- free memory allocated to this window - */
     if (wnd->title != NULL)
         free(wnd->title);
     if (wnd->videosave != NULL)
         free(wnd->videosave);
     /* -- remove window from parent's list of children -- */
-	RemoveWindow(wnd);
-    if (wnd == inFocus)
-        inFocus = NULL;
+	DfRemoveWindow(wnd);
+    if (wnd == DfInFocus)
+        DfInFocus = NULL;
     free(wnd);
 }
 
-/* ---- Window-processing module for NORMAL window class ---- */
-int NormalProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
+/* ---- Window-processing module for DF_NORMAL window class ---- */
+int DfNormalProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 {
     switch (msg)    {
-        case CREATE_WINDOW:
+        case DFM_CREATE_WINDOW:
             CreateWindowMsg(wnd);
             break;
-        case SHOW_WINDOW:
+        case DFM_SHOW_WINDOW:
             ShowWindowMsg(wnd, p1, p2);
             break;
-        case HIDE_WINDOW:
+        case DFM_HIDE_WINDOW:
             HideWindowMsg(wnd);
             break;
-        case DISPLAY_HELP:
-            return DisplayHelp(wnd, (char *)p1);
-        case INSIDE_WINDOW:
+        case DFM_DISPLAY_HELP:
+            DfDisplayHelp(wnd, (char *)p1);
+            break;
+        case DFM_INSIDE_WINDOW:
             return InsideWindow(wnd, (int) p1, (int) p2);
-        case KEYBOARD:
+        case DFM_KEYBOARD:
             if (KeyboardMsg(wnd, p1, p2))
                 return TRUE;
             /* ------- fall through ------- */
-        case ADDSTATUS:
-        case SHIFT_CHANGED:
-            if (GetParent(wnd) != NULL)
-                PostMessage(GetParent(wnd), msg, p1, p2);
+        case DFM_ADDSTATUS:
+        case DFM_SHIFT_CHANGED:
+            if (DfGetParent(wnd) != NULL)
+                DfPostMessage(DfGetParent(wnd), msg, p1, p2);
             break;
-        case PAINT:
-            if (isVisible(wnd))	{
-#ifdef INCLUDE_MULTI_WINDOWS
-				if (wnd->wasCleared)
-					PaintUnderLappers(wnd);
-				else
-#endif
-				{
-					wnd->wasCleared = TRUE;
-	                ClearWindow(wnd, (RECT *)p1, ' ');
-				}
-			}
+        case DFM_PAINT:
+            if (DfIsVisible(wnd))
+                DfClearWindow(wnd, (DFRECT *)p1, ' ');
             break;
-        case BORDER:
-            if (isVisible(wnd))    {
-                if (TestAttribute(wnd, HASBORDER))
-                    RepaintBorder(wnd, (RECT *)p1);
-                else if (TestAttribute(wnd, HASTITLEBAR))
-                    DisplayTitle(wnd, (RECT *)p1);
+        case DFM_BORDER:
+            if (DfIsVisible(wnd))
+            {
+                if (DfTestAttribute(wnd, DF_HASBORDER))
+                    DfRepaintBorder(wnd, (DFRECT *)p1);
+                else if (DfTestAttribute(wnd, DF_HASTITLEBAR))
+                    DfDisplayTitle(wnd, (DFRECT *)p1);
             }
             break;
-        case COMMAND:
+        case DFM_COMMAND:
             CommandMsg(wnd, p1);
             break;
-        case SETFOCUS:
+        case DFM_SETFOCUS:
             SetFocusMsg(wnd, p1);
             break;
-        case DOUBLE_CLICK:
+        case DFM_DOUBLE_CLICK:
             DoubleClickMsg(wnd, p1, p2);
             break;
-        case LEFT_BUTTON:
+        case DFM_LEFT_BUTTON:
             LeftButtonMsg(wnd, p1, p2);
             break;
         case MOUSE_MOVED:
             if (MouseMovedMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case BUTTON_RELEASED:
-            if (WindowMoving || WindowSizing)    {
-                if (WindowMoving)
-                    PostMessage(wnd,MOVE,dwnd.rc.lf,dwnd.rc.tp);
+        case DFM_BUTTON_RELEASED:
+            if (DfWindowMoving || DfWindowSizing)
+            {
+                if (DfWindowMoving)
+                    DfPostMessage(wnd,DFM_MOVE,dwnd.rc.lf,dwnd.rc.tp);
                 else
-                    PostMessage(wnd,SIZE,dwnd.rc.rt,dwnd.rc.bt);
+                    DfPostMessage(wnd, DFM_DFM_SIZE,dwnd.rc.rt,dwnd.rc.bt);
                 TerminateMoveSize();
             }
             break;
 #ifdef INCLUDE_MAXIMIZE
-        case MAXIMIZE:
-            if (wnd->condition != ISMAXIMIZED)
+        case DFM_MAXIMIZE:
+            if (wnd->condition != DF_ISMAXIMIZED)
                 MaximizeMsg(wnd);
             break;
 #endif
 #ifdef INCLUDE_MINIMIZE
-        case MINIMIZE:
-            if (wnd->condition != ISMINIMIZED)
+        case DFM_MINIMIZE:
+            if (wnd->condition != DF_ISMINIMIZED)
                 MinimizeMsg(wnd);
             break;
 #endif
 #ifdef INCLUDE_RESTORE
-        case RESTORE:
-            if (wnd->condition != ISRESTORED)    {
+        case DFM_RESTORE:
+            if (wnd->condition != DF_SRESTORED)    {
 #ifdef INCLUDE_MAXIMIZE
-                if (wnd->oldcondition == ISMAXIMIZED)
-                    SendMessage(wnd, MAXIMIZE, 0, 0);
+                if (wnd->oldcondition == DF_ISMAXIMIZED)
+                    DfSendMessage(wnd, DFM_MAXIMIZE, 0, 0);
                 else
 #endif
                     RestoreMsg(wnd);
             }
             break;
 #endif
-        case MOVE:
+        case DFM_MOVE:
             MoveMsg(wnd, p1, p2);
             break;
-        case SIZE:    {
+        case DFM_DFM_SIZE:    {
             SizeMsg(wnd, p1, p2);
             break;
         }
-        case CLOSE_WINDOW:
+        case DFM_CLOSE_WINDOW:
             CloseWindowMsg(wnd);
             break;
         default:
@@ -711,51 +707,51 @@ int NormalProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
 }
 #ifdef INCLUDE_MINIMIZE
 /* ---- compute lower right icon space in a rectangle ---- */
-static RECT LowerRight(RECT prc)
+static DFRECT LowerRight(DFRECT prc)
 {
-    RECT rc;
-    RectLeft(rc) = RectRight(prc) - ICONWIDTH;
-    RectTop(rc) = RectBottom(prc) - ICONHEIGHT;
-    RectRight(rc) = RectLeft(rc)+ICONWIDTH-1;
-    RectBottom(rc) = RectTop(rc)+ICONHEIGHT-1;
+    DFRECT rc;
+    DfRectLeft(rc) = DfRectRight(prc) - DF_ICONWIDTH;
+    DfRectTop(rc) = DfRectBottom(prc) - DF_ICONHEIGHT;
+    DfRectRight(rc) = DfRectLeft(rc)+DF_ICONWIDTH-1;
+    DfRectBottom(rc) = DfRectTop(rc)+DF_ICONHEIGHT-1;
     return rc;
 }
 /* ----- compute a position for a minimized window icon ---- */
-static RECT PositionIcon(WINDOW wnd)
+static DFRECT PositionIcon(DFWINDOW wnd)
 {
-	WINDOW pwnd = GetParent(wnd);
-    RECT rc;
-    RectLeft(rc) = SCREENWIDTH-ICONWIDTH;
-    RectTop(rc) = SCREENHEIGHT-ICONHEIGHT;
-    RectRight(rc) = SCREENWIDTH-1;
-    RectBottom(rc) = SCREENHEIGHT-1;
+	DFWINDOW pwnd = DfGetParent(wnd);
+    DFRECT rc;
+    DfRectLeft(rc) = DfGetScreenWidth()-DF_ICONWIDTH;
+    DfRectTop(rc) = DfGetScreenHeight()-DF_ICONHEIGHT;
+    DfRectRight(rc) = DfGetScreenWidth()-1;
+    DfRectBottom(rc) = DfGetScreenHeight()-1;
     if (pwnd != NULL)    {
-        RECT prc = WindowRect(pwnd);
-		WINDOW cwnd = FirstWindow(pwnd);
+        DFRECT prc = DfWindowRect(pwnd);
+		DFWINDOW cwnd = DfFirstWindow(pwnd);
         rc = LowerRight(prc);
         /* - search for icon available location - */
 		while (cwnd != NULL)	{
-            if (cwnd->condition == ISMINIMIZED)    {
-                RECT rc1;
-                rc1 = WindowRect(cwnd);
-                if (RectLeft(rc1) == RectLeft(rc) &&
-                        RectTop(rc1) == RectTop(rc))    {
-                    RectLeft(rc) -= ICONWIDTH;
-                    RectRight(rc) -= ICONWIDTH;
-                    if (RectLeft(rc) < RectLeft(prc)+1)   {
-                        RectLeft(rc) =
-                            RectRight(prc)-ICONWIDTH;
-                        RectRight(rc) =
-                            RectLeft(rc)+ICONWIDTH-1;
-                        RectTop(rc) -= ICONHEIGHT;
-                        RectBottom(rc) -= ICONHEIGHT;
-                        if (RectTop(rc) < RectTop(prc)+1)
+            if (cwnd->condition == DF_ISMINIMIZED)    {
+                DFRECT rc1;
+                rc1 = DfWindowRect(cwnd);
+                if (DfRectLeft(rc1) == DfRectLeft(rc) &&
+                        DfRectTop(rc1) == DfRectTop(rc))    {
+                    DfRectLeft(rc) -= DF_ICONWIDTH;
+                    DfRectRight(rc) -= DF_ICONWIDTH;
+                    if (DfRectLeft(rc) < DfRectLeft(prc)+1)   {
+                        DfRectLeft(rc) =
+                            DfRectRight(prc)-DF_ICONWIDTH;
+                        DfRectRight(rc) =
+                            DfRectLeft(rc)+DF_ICONWIDTH-1;
+                        DfRectTop(rc) -= DF_ICONHEIGHT;
+                        DfRectBottom(rc) -= DF_ICONHEIGHT;
+                        if (DfRectTop(rc) < DfRectTop(prc)+1)
                             return LowerRight(prc);
                     }
                     break;
                 }
             }
-			cwnd = NextWindow(cwnd);
+			cwnd = DfNextWindow(cwnd);
         }
     }
     return rc;
@@ -766,46 +762,45 @@ static void TerminateMoveSize(void)
 {
     px = py = -1;
     diff = 0;
-    SendMessage(&dwnd, RELEASE_MOUSE, TRUE, 0);
-    SendMessage(&dwnd, RELEASE_KEYBOARD, TRUE, 0);
+    DfSendMessage(&dwnd, DFM_RELEASE_MOUSE, TRUE, 0);
+    DfSendMessage(&dwnd, DFM_RELEASE_KEYBOARD, TRUE, 0);
     RestoreBorder(dwnd.rc);
-    WindowMoving = WindowSizing = FALSE;
+    DfWindowMoving = DfWindowSizing = FALSE;
 }
 /* ---- build a dummy window border for moving or sizing --- */
-static void near dragborder(WINDOW wnd, int x, int y)
+static void dragborder(DFWINDOW wnd, int x, int y)
 {
     RestoreBorder(dwnd.rc);
     /* ------- build the dummy window -------- */
     dwnd.rc.lf = x;
     dwnd.rc.tp = y;
-    dwnd.rc.rt = dwnd.rc.lf+WindowWidth(wnd)-1;
-    dwnd.rc.bt = dwnd.rc.tp+WindowHeight(wnd)-1;
-    dwnd.ht = WindowHeight(wnd);
-    dwnd.wd = WindowWidth(wnd);
-    dwnd.parent = GetParent(wnd);
-    dwnd.attrib = VISIBLE | HASBORDER | NOCLIP;
-    InitWindowColors(&dwnd);
+    dwnd.rc.rt = dwnd.rc.lf+DfWindowWidth(wnd)-1;
+    dwnd.rc.bt = dwnd.rc.tp+DfWindowHeight(wnd)-1;
+    dwnd.ht = DfWindowHeight(wnd);
+    dwnd.wd = DfWindowWidth(wnd);
+    dwnd.parent = DfGetParent(wnd);
+    dwnd.attrib = DF_VISIBLE | DF_HASBORDER | DF_NOCLIP;
+    DfInitWindowColors(&dwnd);
     SaveBorder(dwnd.rc);
-    RepaintBorder(&dwnd, NULL);
+    DfRepaintBorder(&dwnd, NULL);
 }
 /* ---- write the dummy window border for sizing ---- */
-static void near sizeborder(WINDOW wnd, int rt, int bt)
+static void sizeborder(DFWINDOW wnd, int rt, int bt)
 {
-    int leftmost = GetLeft(wnd)+10;
-    int topmost = GetTop(wnd)+3;
-    int bottommost = SCREENHEIGHT-1;
-    int rightmost  = SCREENWIDTH-1;
-    if (GetParent(wnd))    {
+    int leftmost = DfGetLeft(wnd)+10;
+    int topmost = DfGetTop(wnd)+3;
+    int bottommost = DfGetScreenHeight()-1;
+    int rightmost  = DfGetScreenWidth()-1;
+    if (DfGetParent(wnd))    {
         bottommost = min(bottommost,
-            GetClientBottom(GetParent(wnd)));
+            DfGetClientBottom(DfGetParent(wnd)));
         rightmost  = min(rightmost,
-            GetClientRight(GetParent(wnd)));
+            DfGetClientRight(DfGetParent(wnd)));
     }
     rt = min(rt, rightmost);
     bt = min(bt, bottommost);
     rt = max(rt, leftmost);
     bt = max(bt, topmost);
-    SendMessage(NULL, MOUSE_CURSOR, rt, bt);
 
     if (rt != px || bt != py)
         RestoreBorder(dwnd.rc);
@@ -819,97 +814,95 @@ static void near sizeborder(WINDOW wnd, int rt, int bt)
         px = rt;
         py = bt;
         SaveBorder(dwnd.rc);
-        RepaintBorder(&dwnd, NULL);
+        DfRepaintBorder(&dwnd, NULL);
     }
 }
 #ifdef INCLUDE_MULTI_WINDOWS
 /* ----- adjust a rectangle to include the shadow ----- */
-static RECT adjShadow(WINDOW wnd)
+static DFRECT adjShadow(DFWINDOW wnd)
 {
-    RECT rc;
+    DFRECT rc;
     rc = wnd->rc;
-    if (TestAttribute(wnd, SHADOW))    {
-        if (RectRight(rc) < SCREENWIDTH-1)
-            RectRight(rc)++;           
-        if (RectBottom(rc) < SCREENHEIGHT-1)
-            RectBottom(rc)++;
+    if (DfTestAttribute(wnd, DF_SHADOW))    {
+        if (DfRectRight(rc) < DfGetScreenWidth()-1)
+            DfRectRight(rc)++;
+        if (DfRectBottom(rc) < DfGetScreenHeight()-1)
+            DfRectBottom(rc)++;
     }
     return rc;
 }
 /* --- repaint a rectangular subsection of a window --- */
-static void near PaintOverLap(WINDOW wnd, RECT rc)
+static void PaintOverLap(DFWINDOW wnd, DFRECT rc)
 {
-    if (isVisible(wnd))    {
+    if (DfIsVisible(wnd))    {
         int isBorder, isTitle, isData;
         isBorder = isTitle = FALSE;
         isData = TRUE;
-        if (TestAttribute(wnd, HASBORDER))    {
-            isBorder =  RectLeft(rc) == 0 &&
-                        RectTop(rc) < WindowHeight(wnd);
-            isBorder |= RectLeft(rc) < WindowWidth(wnd) &&
-                        RectRight(rc) >= WindowWidth(wnd)-1 &&
-                        RectTop(rc) < WindowHeight(wnd);
-            isBorder |= RectTop(rc) == 0 &&
-                        RectLeft(rc) < WindowWidth(wnd);
-            isBorder |= RectTop(rc) < WindowHeight(wnd) &&
-                        RectBottom(rc) >= WindowHeight(wnd)-1 &&
-                        RectLeft(rc) < WindowWidth(wnd);
+        if (DfTestAttribute(wnd, DF_HASBORDER))    {
+            isBorder =  DfRectLeft(rc) == 0 &&
+                        DfRectTop(rc) < DfWindowHeight(wnd);
+            isBorder |= DfRectLeft(rc) < DfWindowWidth(wnd) &&
+                        DfRectRight(rc) >= DfWindowWidth(wnd)-1 &&
+                        DfRectTop(rc) < DfWindowHeight(wnd);
+            isBorder |= DfRectTop(rc) == 0 &&
+                        DfRectLeft(rc) < DfWindowWidth(wnd);
+            isBorder |= DfRectTop(rc) < DfWindowHeight(wnd) &&
+                        DfRectBottom(rc) >= DfWindowHeight(wnd)-1 &&
+                        DfRectLeft(rc) < DfWindowWidth(wnd);
         }
-        else if (TestAttribute(wnd, HASTITLEBAR))
-            isTitle = RectTop(rc) == 0 &&
-                      RectRight(rc) > 0 &&
-                      RectLeft(rc)<WindowWidth(wnd)-BorderAdj(wnd);
+        else if (DfTestAttribute(wnd, DF_HASTITLEBAR))
+            isTitle = DfRectTop(rc) == 0 &&
+                      DfRectRight(rc) > 0 &&
+                      DfRectLeft(rc)<DfWindowWidth(wnd)-DfBorderAdj(wnd);
 
-        if (RectLeft(rc) >= WindowWidth(wnd)-BorderAdj(wnd))
+        if (DfRectLeft(rc) >= DfWindowWidth(wnd)-DfBorderAdj(wnd))
             isData = FALSE;
-        if (RectTop(rc) >= WindowHeight(wnd)-BottomBorderAdj(wnd))
+        if (DfRectTop(rc) >= DfWindowHeight(wnd)-DfBottomBorderAdj(wnd))
             isData = FALSE;
-        if (TestAttribute(wnd, HASBORDER))    {
-            if (RectRight(rc) == 0)
+        if (DfTestAttribute(wnd, DF_HASBORDER))    {
+            if (DfRectRight(rc) == 0)
                 isData = FALSE;
-            if (RectBottom(rc) == 0)
+            if (DfRectBottom(rc) == 0)
                 isData = FALSE;
         }
-        if (TestAttribute(wnd, SHADOW))
-            isBorder |= RectRight(rc) == WindowWidth(wnd) ||
-                        RectBottom(rc) == WindowHeight(wnd);
-        if (isData)	{
-			wnd->wasCleared = FALSE;
-            SendMessage(wnd, PAINT, (PARAM) &rc, TRUE);
-		}
+        if (DfTestAttribute(wnd, DF_SHADOW))
+            isBorder |= DfRectRight(rc) == DfWindowWidth(wnd) ||
+                        DfRectBottom(rc) == DfWindowHeight(wnd);
+        if (isData)
+            DfSendMessage(wnd, DFM_PAINT, (DF_PARAM) &rc, TRUE);
         if (isBorder)
-            SendMessage(wnd, BORDER, (PARAM) &rc, 0);
+            DfSendMessage(wnd, DFM_BORDER, (DF_PARAM) &rc, 0);
         else if (isTitle)
-            DisplayTitle(wnd, &rc);
+            DfDisplayTitle(wnd, &rc);
     }
 }
 /* ------ paint the part of a window that is overlapped
             by another window that is being hidden ------- */
-static void PaintOver(WINDOW wnd)
+static void PaintOver(DFWINDOW wnd)
 {
-    RECT wrc, rc;
+    DFRECT wrc, rc;
     wrc = adjShadow(HiddenWindow);
     rc = adjShadow(wnd);
-    rc = subRectangle(rc, wrc);
-    if (ValidRect(rc))
-        PaintOverLap(wnd, RelativeWindowRect(wnd, rc));
+    rc = DfSubRectangle(rc, wrc);
+    if (DfValidRect(rc))
+        PaintOverLap(wnd, DfRelativeWindowRect(wnd, rc));
 }
 /* --- paint the overlapped parts of all children --- */
-static void PaintOverChildren(WINDOW pwnd)
+static void PaintOverChildren(DFWINDOW pwnd)
 {
-    WINDOW cwnd = FirstWindow(pwnd);
+    DFWINDOW cwnd = DfFirstWindow(pwnd);
     while (cwnd != NULL)    {
         if (cwnd != HiddenWindow)    {
             PaintOver(cwnd);
             PaintOverChildren(cwnd);
         }
-        cwnd = NextWindow(cwnd);
+        cwnd = DfNextWindow(cwnd);
     }
 }
 /* -- recursive overlapping paint of parents -- */
-static void PaintOverParents(WINDOW wnd)
+static void PaintOverParents(DFWINDOW wnd)
 {
-    WINDOW pwnd = GetParent(wnd);
+    DFWINDOW pwnd = DfGetParent(wnd);
     if (pwnd != NULL)    {
         PaintOverParents(pwnd);
         PaintOver(pwnd);
@@ -917,196 +910,176 @@ static void PaintOverParents(WINDOW wnd)
     }
 }
 /* - paint the parts of all windows that a window is over - */
-static void near PaintOverLappers(WINDOW wnd)
+static void PaintOverLappers(DFWINDOW wnd)
 {
     HiddenWindow = wnd;
     PaintOverParents(wnd);
 }
 /* --- paint those parts of a window that are overlapped --- */
-static void near PaintUnderLappers(WINDOW wnd)
+static void PaintUnderLappers(DFWINDOW wnd)
 {
-    WINDOW hwnd = NextWindow(wnd);
+    DFWINDOW hwnd = DfNextWindow(wnd);
     while (hwnd != NULL)    {
         /* ------- test only at document window level ------ */
-        WINDOW pwnd = GetParent(hwnd);
-/*        if (pwnd == NULL || GetClass(pwnd) == APPLICATION)  */  {
+        DFWINDOW pwnd = DfGetParent(hwnd);
+/*        if (pwnd == NULL || DfGetClass(pwnd) == DF_APPLICATION)  */  {
             /* ---- don't bother testing self ----- */
-            if (isVisible(hwnd) && hwnd != wnd)    {
+            if (DfIsVisible(hwnd) && hwnd != wnd)    {
                 /* --- see if other window is descendent --- */
                 while (pwnd != NULL)    {
                     if (pwnd == wnd)
                         break;
-                    pwnd = GetParent(pwnd);
+                    pwnd = DfGetParent(pwnd);
                 }
                 /* ----- don't test descendent overlaps ----- */
                 if (pwnd == NULL)    {
                     /* -- see if other window is ancestor --- */
-                    pwnd = GetParent(wnd);
+                    pwnd = DfGetParent(wnd);
                     while (pwnd != NULL)    {
                         if (pwnd == hwnd)
                             break;
-                        pwnd = GetParent(pwnd);
+                        pwnd = DfGetParent(pwnd);
                     }
                     /* --- don't test ancestor overlaps --- */
                     if (pwnd == NULL)    {
-                        HiddenWindow = GetAncestor(hwnd);
-                        ClearVisible(HiddenWindow);
+                        HiddenWindow = DfGetAncestor(hwnd);
+                        DfClearVisible(HiddenWindow);
                         PaintOver(wnd);
-                        SetVisible(HiddenWindow);
+                        DfSetVisible(HiddenWindow);
                     }
                 }
             }
         }
-        hwnd = NextWindow(hwnd);
+        hwnd = DfNextWindow(hwnd);
     }
     /* --------- repaint all children of this window
         the same way ----------- */
-    hwnd = FirstWindow(wnd);
+    hwnd = DfFirstWindow(wnd);
     while (hwnd != NULL)    {
         PaintUnderLappers(hwnd);
-        hwnd = NextWindow(hwnd);
+        hwnd = DfNextWindow(hwnd);
     }
 }
 #endif /* #ifdef INCLUDE_MULTI_WINDOWS */
 
 /* --- save video area to be used by dummy window border --- */
-static void SaveBorder(RECT rc)
+static void SaveBorder(DFRECT rc)
 {
-    RECT lrc;
-    int i;
-    short *cp;
-    Bht = RectBottom(rc) - RectTop(rc) + 1;
-    Bwd = RectRight(rc) - RectLeft(rc) + 1;
-    Bsave = DFrealloc(Bsave, (Bht + Bwd) * 4);
+	Bht = DfRectBottom(rc) - DfRectTop(rc) + 1;
+	Bwd = DfRectRight(rc) - DfRectLeft(rc) + 1;
+	Bsave = DfRealloc(Bsave, Bht * Bwd * sizeof(CHAR_INFO));
 
-    lrc = rc;
-    RectBottom(lrc) = RectTop(lrc);
-    getvideo(lrc, Bsave);
-    RectTop(lrc) = RectBottom(lrc) = RectBottom(rc);
-    getvideo(lrc, Bsave + Bwd);
-    cp = Bsave + Bwd * 2;
-    for (i = 1; i < Bht-1; i++)    {
-        *cp++ = GetVideoChar(RectLeft(rc),RectTop(rc)+i);
-        *cp++ = GetVideoChar(RectRight(rc),RectTop(rc)+i);
-    }
+	DfGetVideo(rc,Bsave);
 }
 /* ---- restore video area used by dummy window border ---- */
-static void RestoreBorder(RECT rc)
+static void RestoreBorder(DFRECT rc)
 {
-    if (Bsave != NULL)    {
-        RECT lrc;
-        int i;
-        short *cp;
-        lrc = rc;
-        RectBottom(lrc) = RectTop(lrc);
-        storevideo(lrc, Bsave);
-        RectTop(lrc) = RectBottom(lrc) = RectBottom(rc);
-        storevideo(lrc, Bsave + Bwd);
-        cp = Bsave + Bwd * 2;
-        for (i = 1; i < Bht-1; i++)    {
-            PutVideoChar(RectLeft(rc),RectTop(rc)+i, *cp++);
-            PutVideoChar(RectRight(rc),RectTop(rc)+i, *cp++);
-        }
-        free(Bsave);
-        Bsave = NULL;
-    }
+	if (Bsave != NULL)
+	{
+		DfStoreVideo(rc, Bsave);
+		free(Bsave);
+		Bsave = NULL;
+	}
 }
 /* ----- test if screen coordinates are in a window ---- */
-static BOOL InsideWindow(WINDOW wnd, int x, int y)
+static BOOL InsideWindow(DFWINDOW wnd, int x, int y)
 {
-    RECT rc;
-    rc = WindowRect(wnd);
-    if (!TestAttribute(wnd, NOCLIP))    {
-        WINDOW pwnd = GetParent(wnd);
-        while (pwnd != NULL)    {
-            rc = subRectangle(rc, ClientRect(pwnd));
-            pwnd = GetParent(pwnd);
+    DFRECT rc;
+    rc = DfWindowRect(wnd);
+    if (!DfTestAttribute(wnd, DF_NOCLIP))
+    {
+        DFWINDOW pwnd = DfGetParent(wnd);
+        while (pwnd != NULL)
+		{
+            rc = DfSubRectangle(rc, DfClientRect(pwnd));
+            pwnd = DfGetParent(pwnd);
         }
     }
-    return InsideRect(x, y, rc);
+    return DfInsideRect(x, y, rc);
 }
 
-BOOL isDerivedFrom(WINDOW wnd, CLASS Class)
+BOOL DfIsDerivedFrom(DFWINDOW wnd, DFCLASS class)
 {
-    CLASS tclass = GetClass(wnd);
+    DFCLASS tclass = DfGetClass(wnd);
     while (tclass != -1)    {
-        if (tclass == Class)
+        if (tclass == class)
             return TRUE;
-        tclass = (classdefs[tclass].base);
+        tclass = (DfClassDefs[tclass].base);
     }
     return FALSE;
 }
 
 /* -- find the oldest document window ancestor of a window -- */
-WINDOW GetAncestor(WINDOW wnd)
+DFWINDOW DfGetAncestor(DFWINDOW wnd)
 {
     if (wnd != NULL)    {
-        while (GetParent(wnd) != NULL)    {
-            if (GetClass(GetParent(wnd)) == APPLICATION)
+        while (DfGetParent(wnd) != NULL)    {
+            if (DfGetClass(DfGetParent(wnd)) == DF_APPLICATION)
                 break;
-            wnd = GetParent(wnd);
+            wnd = DfGetParent(wnd);
         }
     }
     return wnd;
 }
 
-BOOL isVisible(WINDOW wnd)
+BOOL DfIsVisible(DFWINDOW wnd)
 {
     while (wnd != NULL)    {
         if (isHidden(wnd))
             return FALSE;
-        wnd = GetParent(wnd);
+        wnd = DfGetParent(wnd);
     }
     return TRUE;
 }
 
 /* -- adjust a window's rectangle to clip it to its parent - */
-static RECT near ClipRect(WINDOW wnd)
+static DFRECT ClipRect(DFWINDOW wnd)
 {
-    RECT rc;
-    rc = WindowRect(wnd);
-    if (TestAttribute(wnd, SHADOW))    {
-        RectBottom(rc)++;
-        RectRight(rc)++;
+    DFRECT rc;
+    rc = DfWindowRect(wnd);
+    if (DfTestAttribute(wnd, DF_SHADOW))    {
+        DfRectBottom(rc)++;
+        DfRectRight(rc)++;
     }
-	return ClipRectangle(wnd, rc);
+	return DfClipRectangle(wnd, rc);
 }
 
 /* -- get the video memory that is to be used by a window -- */
-static void GetVideoBuffer(WINDOW wnd)
+static void GetVideoBuffer(DFWINDOW wnd)
 {
-    RECT rc;
+    DFRECT rc;
     int ht;
     int wd;
 
     rc = ClipRect(wnd);
-    ht = RectBottom(rc) - RectTop(rc) + 1;
-    wd = RectRight(rc) - RectLeft(rc) + 1;
-    wnd->videosave = DFrealloc(wnd->videosave, (ht * wd * 2));
-    get_videomode();
-    getvideo(rc, wnd->videosave);
+    ht = DfRectBottom(rc) - DfRectTop(rc) + 1;
+    wd = DfRectRight(rc) - DfRectLeft(rc) + 1;
+    wnd->videosave = DfRealloc(wnd->videosave, (ht * wd * sizeof(CHAR_INFO)));
+    DfGetVideo(rc, wnd->videosave);
 }
 
 /* -- put the video memory that is used by a window -- */
-static void PutVideoBuffer(WINDOW wnd)
+static void PutVideoBuffer(DFWINDOW wnd)
 {
-    if (wnd->videosave != NULL)    {
-    	RECT rc;
-    	rc = ClipRect(wnd);
-    	get_videomode();
-    	storevideo(rc, wnd->videosave);
-    	free(wnd->videosave);
-    	wnd->videosave = NULL;
+	if (wnd->videosave != NULL)
+	{
+		DFRECT rc;
+		rc = ClipRect(wnd);
+		DfStoreVideo(rc, wnd->videosave);
+		free(wnd->videosave);
+		wnd->videosave = NULL;
 	}
 }
 
 /* ------- return TRUE if awnd is an ancestor of wnd ------- */
-BOOL isAncestor(WINDOW wnd, WINDOW awnd)
+BOOL DfIsAncestor(DFWINDOW wnd, DFWINDOW awnd)
 {
 	while (wnd != NULL)	{
 		if (wnd == awnd)
 			return TRUE;
-		wnd = GetParent(wnd);
+		wnd = DfGetParent(wnd);
 	}
 	return FALSE;
 }
+
+/* EOF */

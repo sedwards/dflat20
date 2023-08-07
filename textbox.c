@@ -2,18 +2,18 @@
 
 #include "dflat.h"
 
-static void ComputeWindowTop(WINDOW);
-static void ComputeWindowLeft(WINDOW);
-static int ComputeVScrollBox(WINDOW);
-static int ComputeHScrollBox(WINDOW);
-static void MoveScrollBox(WINDOW, int);
-static char *GetTextLine(WINDOW, int);
+static void ComputeWindowTop(DFWINDOW);
+static void ComputeWindowLeft(DFWINDOW);
+static int ComputeVScrollBox(DFWINDOW);
+static int ComputeHScrollBox(DFWINDOW);
+static void MoveScrollBox(DFWINDOW, int);
+static char *GetTextLine(DFWINDOW, int);
 
-BOOL VSliding;
-BOOL HSliding;
+BOOL DfVSliding;
+BOOL DfHSliding;
 
-/* ------------ ADDTEXT Message -------------- */
-static BOOL AddTextMsg(WINDOW wnd, char *txt)
+/* ------------ DFM_ADDTEXT Message -------------- */
+static BOOL AddTextMsg(DFWINDOW wnd, char *txt)
 {
     /* --- append text to the textbox's buffer --- */
     unsigned adln = strlen(txt);
@@ -25,70 +25,68 @@ static BOOL AddTextMsg(WINDOW wnd, char *txt)
         if ((long)txln+adln > (unsigned) 0xfff0)
             return FALSE;
         if (txln+adln > wnd->textlen)    {
-            wnd->text = DFrealloc(wnd->text, txln+adln+3);
+            wnd->text = DfRealloc(wnd->text, txln+adln+3);
             wnd->textlen = txln+adln+1;
         }
     }
     else    {
         /* ------ 1st text appended ------ */
-        wnd->text = DFcalloc(1, adln+3);
+        wnd->text = DfCalloc(1, adln+3);
         wnd->textlen = adln+1;
     }
-	wnd->TextChanged = TRUE;
     if (wnd->text != NULL)    {
         /* ---- append the text ---- */
         strcat(wnd->text, txt);
         strcat(wnd->text, "\n");
-        BuildTextPointers(wnd);
+        DfBuildTextPointers(wnd);
 		return TRUE;
     }
 	return FALSE;
 }
 
-/* ------------ DELETETEXT Message -------------- */
-static void DeleteTextMsg(WINDOW wnd, int lno)
+/* ------------ DFM_DELETETEXT Message -------------- */
+static void DeleteTextMsg(DFWINDOW wnd, int lno)
 {
-	char *cp1 = TextLine(wnd, lno);
+	char *cp1 = DfTextLine(wnd, lno);
 	--wnd->wlines;
 	if (lno == wnd->wlines)
 		*cp1 = '\0';
 	else 	{
-		char *cp2 = TextLine(wnd, lno+1);
+		char *cp2 = DfTextLine(wnd, lno+1);
 		memmove(cp1, cp2, strlen(cp2)+1);
 	}
-    BuildTextPointers(wnd);
+    DfBuildTextPointers(wnd);
 }
 
-/* ------------ INSERTTEXT Message -------------- */
-static void InsertTextMsg(WINDOW wnd, char *txt, int lno)
+/* ------------ DFM_INSERTTEXT Message -------------- */
+static void InsertTextMsg(DFWINDOW wnd, char *txt, int lno)
 {
 	if (AddTextMsg(wnd, txt))	{
-		int len = strlen(txt)+1;
-		char *cp2 = TextLine(wnd, lno);
-		char *cp1 = cp2+len;
+		int len = strlen(txt);
+		char *cp2 = DfTextLine(wnd, lno);
+		char *cp1 = cp2+len+1;
 		memmove(cp1, cp2, strlen(cp2)-len);
 		strcpy(cp2, txt);
-		*(cp2+len-1) = '\n';
-	    BuildTextPointers(wnd);
-		wnd->TextChanged = TRUE;
+		*(cp2+len) = '\n';
+	    DfBuildTextPointers(wnd);
 	}
 }
 
-/* ------------ SETTEXT Message -------------- */
-static void SetTextMsg(WINDOW wnd, char *txt)
+/* ------------ DFM_SETTEXT Message -------------- */
+static void SetTextMsg(DFWINDOW wnd, char *txt)
 {
     /* -- assign new text value to textbox buffer -- */
     unsigned int len = strlen(txt)+1;
-	SendMessage(wnd, CLEARTEXT, 0, 0);
+	DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
     wnd->textlen = len;
-    wnd->text=DFrealloc(wnd->text, len+1);
+    wnd->text=DfRealloc(wnd->text, len+1);
     wnd->text[len] = '\0';
     strcpy(wnd->text, txt);
-    BuildTextPointers(wnd);
+    DfBuildTextPointers(wnd);
 }
 
-/* ------------ CLEARTEXT Message -------------- */
-static void ClearTextMsg(WINDOW wnd)
+/* ------------ DFM_CLEARTEXT Message -------------- */
+static void ClearTextMsg(DFWINDOW wnd)
 {
     /* ----- clear text from textbox ----- */
     if (wnd->text != NULL)
@@ -98,128 +96,128 @@ static void ClearTextMsg(WINDOW wnd)
     wnd->wlines = 0;
     wnd->textwidth = 0;
     wnd->wtop = wnd->wleft = 0;
-    ClearTextBlock(wnd);
-    ClearTextPointers(wnd);
+    DfClearTextBlock(wnd);
+    DfClearTextPointers(wnd);
 }
 
-/* ------------ KEYBOARD Message -------------- */
-static int KeyboardMsg(WINDOW wnd, PARAM p1)
+/* ------------ DFM_KEYBOARD Message -------------- */
+static int KeyboardMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     switch ((int) p1)    {
-        case UP:
-            return SendMessage(wnd,SCROLL,FALSE,0);
-        case DN:
-            return SendMessage(wnd,SCROLL,TRUE,0);
-        case FWD:
-            return SendMessage(wnd,HORIZSCROLL,TRUE,0);
-        case BS:
-            return SendMessage(wnd,HORIZSCROLL,FALSE,0);
-        case PGUP:
-            return SendMessage(wnd,SCROLLPAGE,FALSE,0);
-        case PGDN:
-            return SendMessage(wnd,SCROLLPAGE,TRUE,0);
-        case CTRL_PGUP:
-            return SendMessage(wnd,HORIZPAGE,FALSE,0);
-        case CTRL_PGDN:
-            return SendMessage(wnd,HORIZPAGE,TRUE,0);
-        case HOME:
-            return SendMessage(wnd,SCROLLDOC,TRUE,0);
-        case END:
-            return SendMessage(wnd,SCROLLDOC,FALSE,0);
+        case DF_UP:
+            return DfSendMessage(wnd,DFM_SCROLL,FALSE,0);
+        case DF_DN:
+            return DfSendMessage(wnd,DFM_SCROLL,TRUE,0);
+        case DF_FWD:
+            return DfSendMessage(wnd,DFM_HORIZSCROLL,TRUE,0);
+        case DF_BS:
+            return DfSendMessage(wnd,DFM_HORIZSCROLL,FALSE,0);
+        case DF_PGUP:
+            return DfSendMessage(wnd,DFM_SCROLLPAGE,FALSE,0);
+        case DF_PGDN:
+            return DfSendMessage(wnd,DFM_SCROLLPAGE,TRUE,0);
+        case DF_CTRL_PGUP:
+            return DfSendMessage(wnd,DFM_HORIZPAGE,FALSE,0);
+        case DF_CTRL_PGDN:
+            return DfSendMessage(wnd,DFM_HORIZPAGE,TRUE,0);
+        case DF_HOME:
+            return DfSendMessage(wnd,DFM_SCROLLDOC,TRUE,0);
+        case DF_END:
+            return DfSendMessage(wnd,DFM_SCROLLDOC,FALSE,0);
         default:
             break;
     }
     return FALSE;
 }
 
-/* ------------ LEFT_BUTTON Message -------------- */
-static int LeftButtonMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ------------ DFM_LEFT_BUTTON Message -------------- */
+static int LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int mx = (int) p1 - GetLeft(wnd);
-    int my = (int) p2 - GetTop(wnd);
-    if (TestAttribute(wnd, VSCROLLBAR) &&
-                        mx == WindowWidth(wnd)-1)    {
+    int mx = (int) p1 - DfGetLeft(wnd);
+    int my = (int) p2 - DfGetTop(wnd);
+    if (DfTestAttribute(wnd, DF_VSCROLLBAR) &&
+                        mx == DfWindowWidth(wnd)-1)    {
         /* -------- in the right border ------- */
-        if (my == 0 || my == ClientHeight(wnd)+1)
+        if (my == 0 || my == DfClientHeight(wnd)+1)
             /* --- above or below the scroll bar --- */
             return FALSE;
         if (my == 1)
             /* -------- top scroll button --------- */
-            return SendMessage(wnd, SCROLL, FALSE, 0);
-        if (my == ClientHeight(wnd))
+            return DfSendMessage(wnd, DFM_SCROLL, FALSE, 0);
+        if (my == DfClientHeight(wnd))
             /* -------- bottom scroll button --------- */
-            return SendMessage(wnd, SCROLL, TRUE, 0);
+            return DfSendMessage(wnd, DFM_SCROLL, TRUE, 0);
         /* ---------- in the scroll bar ----------- */
-        if (!VSliding && my-1 == wnd->VScrollBox)    {
-            RECT rc;
-            VSliding = TRUE;
-            rc.lf = rc.rt = GetRight(wnd);
-            rc.tp = GetTop(wnd)+2;
-            rc.bt = GetBottom(wnd)-2;
-            return SendMessage(NULL, MOUSE_TRAVEL,
-                (PARAM) &rc, 0);
+        if (!DfVSliding && my-1 == wnd->VScrollBox)    {
+            DFRECT rc;
+            DfVSliding = TRUE;
+            rc.lf = rc.rt = DfGetRight(wnd);
+            rc.tp = DfGetTop(wnd)+2;
+            rc.bt = DfGetBottom(wnd)-2;
+            return DfSendMessage(NULL, DFM_MOUSE_TRAVEL,
+                (DF_PARAM) &rc, 0);
         }
         if (my-1 < wnd->VScrollBox)
-            return SendMessage(wnd,SCROLLPAGE,FALSE,0);
+            return DfSendMessage(wnd,DFM_SCROLLPAGE,FALSE,0);
         if (my-1 > wnd->VScrollBox)
-            return SendMessage(wnd,SCROLLPAGE,TRUE,0);
+            return DfSendMessage(wnd,DFM_SCROLLPAGE,TRUE,0);
     }
-    if (TestAttribute(wnd, HSCROLLBAR) &&
-                        my == WindowHeight(wnd)-1) {
+    if (DfTestAttribute(wnd, DF_HSCROLLBAR) &&
+                        my == DfWindowHeight(wnd)-1) {
         /* -------- in the bottom border ------- */
-        if (mx == 0 || my == ClientWidth(wnd)+1)
+        if (mx == 0 || my == DfClientWidth(wnd)+1)
             /* ------  outside the scroll bar ---- */
             return FALSE;
         if (mx == 1)
-            return SendMessage(wnd, HORIZSCROLL,FALSE,0);
-        if (mx == WindowWidth(wnd)-2)
-            return SendMessage(wnd, HORIZSCROLL,TRUE,0);
-        if (!HSliding && mx-1 == wnd->HScrollBox)    {
+            return DfSendMessage(wnd, DFM_HORIZSCROLL,FALSE,0);
+        if (mx == DfWindowWidth(wnd)-2)
+            return DfSendMessage(wnd, DFM_HORIZSCROLL,TRUE,0);
+        if (!DfHSliding && mx-1 == wnd->HScrollBox)    {
             /* --- hit the scroll box --- */
-            RECT rc;
-            rc.lf = GetLeft(wnd)+2;
-            rc.rt = GetRight(wnd)-2;
-            rc.tp = rc.bt = GetBottom(wnd);
+            DFRECT rc;
+            rc.lf = DfGetLeft(wnd)+2;
+            rc.rt = DfGetRight(wnd)-2;
+            rc.tp = rc.bt = DfGetBottom(wnd);
             /* - keep the mouse in the scroll bar - */
-            SendMessage(NULL,MOUSE_TRAVEL,(PARAM)&rc,0);
-            HSliding = TRUE;
+            DfSendMessage(NULL,DFM_MOUSE_TRAVEL,(DF_PARAM)&rc,0);
+            DfHSliding = TRUE;
             return TRUE;
         }
         if (mx-1 < wnd->HScrollBox)
-            return SendMessage(wnd,HORIZPAGE,FALSE,0);
+            return DfSendMessage(wnd,DFM_HORIZPAGE,FALSE,0);
         if (mx-1 > wnd->HScrollBox)
-            return SendMessage(wnd,HORIZPAGE,TRUE,0);
+            return DfSendMessage(wnd,DFM_HORIZPAGE,TRUE,0);
     }
     return FALSE;
 }
 
 /* ------------ MOUSE_MOVED Message -------------- */
-static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
+static BOOL MouseMovedMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int mx = (int) p1 - GetLeft(wnd);
-    int my = (int) p2 - GetTop(wnd);
-    if (VSliding)    {
+    int mx = (int) p1 - DfGetLeft(wnd);
+    int my = (int) p2 - DfGetTop(wnd);
+    if (DfVSliding)    {
         /* ---- dragging the vertical scroll box --- */
         if (my-1 != wnd->VScrollBox)    {
-            foreground = FrameForeground(wnd);
-            background = FrameBackground(wnd);
-            wputch(wnd, SCROLLBARCHAR, WindowWidth(wnd)-1,
+            DfForeground = DfFrameForeground(wnd);
+            DfBackground = DfFrameBackground(wnd);
+            DfWPutch(wnd, DF_SCROLLBARCHAR, DfWindowWidth(wnd)-1,
                     wnd->VScrollBox+1);
             wnd->VScrollBox = my-1;
-            wputch(wnd, SCROLLBOXCHAR, WindowWidth(wnd)-1,
+            DfWPutch(wnd, DF_SCROLLBOXCHAR, DfWindowWidth(wnd)-1,
                     my);
         }
         return TRUE;
     }
-    if (HSliding)    {
+    if (DfHSliding)    {
         /* --- dragging the horizontal scroll box --- */
         if (mx-1 != wnd->HScrollBox)    {
-            foreground = FrameForeground(wnd);
-            background = FrameBackground(wnd);
-            wputch(wnd, SCROLLBARCHAR, wnd->HScrollBox+1,
-                    WindowHeight(wnd)-1);
+            DfForeground = DfFrameForeground(wnd);
+            DfBackground = DfFrameBackground(wnd);
+            DfWPutch(wnd, DF_SCROLLBARCHAR, wnd->HScrollBox+1,
+                    DfWindowHeight(wnd)-1);
             wnd->HScrollBox = mx-1;
-            wputch(wnd, SCROLLBOXCHAR, mx, WindowHeight(wnd)-1);
+            DfWPutch(wnd, DF_SCROLLBOXCHAR, mx, DfWindowHeight(wnd)-1);
         }
         return TRUE;
     }
@@ -227,25 +225,25 @@ static BOOL MouseMovedMsg(WINDOW wnd, PARAM p1, PARAM p2)
 }
 
 /* ------------ BUTTON_RELEASED Message -------------- */
-static void ButtonReleasedMsg(WINDOW wnd)
+static void ButtonReleasedMsg(DFWINDOW wnd)
 {
-    if (HSliding || VSliding)    {
+    if (DfHSliding || DfVSliding)    {
         /* release the mouse ouside the scroll bar */
-        SendMessage(NULL, MOUSE_TRAVEL, 0, 0);
-        VSliding ? ComputeWindowTop(wnd):ComputeWindowLeft(wnd);
-        SendMessage(wnd, PAINT, 0, 0);
-        SendMessage(wnd, KEYBOARD_CURSOR, 0, 0);
-        VSliding = HSliding = FALSE;
+        DfSendMessage(NULL, DFM_MOUSE_TRAVEL, 0, 0);
+        DfVSliding ? ComputeWindowTop(wnd):ComputeWindowLeft(wnd);
+        DfSendMessage(wnd, DFM_PAINT, 0, 0);
+        DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, 0, 0);
+        DfVSliding = DfHSliding = FALSE;
     }
 }
 
-/* ------------ SCROLL Message -------------- */
-static BOOL ScrollMsg(WINDOW wnd, PARAM p1)
+/* ------------ DFM_SCROLL Message -------------- */
+static BOOL ScrollMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     /* ---- vertical scroll one line ---- */
     if (p1)    {
         /* ----- scroll one line up ----- */
-        if (wnd->wtop+ClientHeight(wnd) >= wnd->wlines)
+        if (wnd->wtop+DfClientHeight(wnd) >= wnd->wlines)
             return FALSE;
         wnd->wtop++;
     }
@@ -255,28 +253,28 @@ static BOOL ScrollMsg(WINDOW wnd, PARAM p1)
             return FALSE;
         --wnd->wtop;
     }
-    if (isVisible(wnd))    {
-        RECT rc;
-        rc = ClipRectangle(wnd, ClientRect(wnd));
-        if (ValidRect(rc))    {
+    if (DfIsVisible(wnd))    {
+        DFRECT rc;
+        rc = DfClipRectangle(wnd, DfClientRect(wnd));
+        if (DfValidRect(rc))    {
             /* ---- scroll the window ----- */
-            if (wnd != inFocus)
-                SendMessage(wnd, PAINT, 0, 0);
+            if (wnd != DfInFocus)
+                DfSendMessage(wnd, DFM_PAINT, 0, 0);
             else    {
-                scroll_window(wnd, rc, (int)p1);
+                DfScrollWindow(wnd, rc, (int)p1);
                 if (!(int)p1)
                     /* -- write top line (down) -- */
-                    WriteTextLine(wnd,NULL,wnd->wtop,FALSE);
+                    DfWriteTextLine(wnd,NULL,wnd->wtop,FALSE);
                 else    {
                     /* -- write bottom line (up) -- */
-                    int y=RectBottom(rc)-GetClientTop(wnd);
-                    WriteTextLine(wnd, NULL,
+                    int y=DfRectBottom(rc)-DfGetClientTop(wnd);
+                    DfWriteTextLine(wnd, NULL,
                         wnd->wtop+y, FALSE);
                 }
             }
         }
         /* ---- reset the scroll box ---- */
-        if (TestAttribute(wnd, VSCROLLBAR))    {
+        if (DfTestAttribute(wnd, DF_VSCROLLBAR))    {
             int vscrollbox = ComputeVScrollBox(wnd);
             if (vscrollbox != wnd->VScrollBox)
                 MoveScrollBox(wnd, vscrollbox);
@@ -285,13 +283,13 @@ static BOOL ScrollMsg(WINDOW wnd, PARAM p1)
     return TRUE;
 }
 
-/* ------------ HORIZSCROLL Message -------------- */
-static BOOL HorizScrollMsg(WINDOW wnd, PARAM p1)
+/* ------------ DFM_HORIZSCROLL Message -------------- */
+static BOOL HorizScrollMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     /* --- horizontal scroll one column --- */
     if (p1)    {
         /* --- scroll left --- */
-        if (wnd->wleft + ClientWidth(wnd)-1 >= wnd->textwidth)
+        if (wnd->wleft + DfClientWidth(wnd)-1 >= wnd->textwidth)
 			return FALSE;
         wnd->wleft++;
     }
@@ -301,169 +299,169 @@ static BOOL HorizScrollMsg(WINDOW wnd, PARAM p1)
 			return FALSE;
         --wnd->wleft;
 	}
-    SendMessage(wnd, PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
 	return TRUE;
 }
 
-/* ------------  SCROLLPAGE Message -------------- */
-static void ScrollPageMsg(WINDOW wnd, PARAM p1)
+/* ------------  DFM_SCROLLPAGE Message -------------- */
+static void ScrollPageMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     /* --- vertical scroll one page --- */
     if ((int) p1 == FALSE)    {
         /* ---- page up ---- */
         if (wnd->wtop)
-            wnd->wtop -= ClientHeight(wnd);
+            wnd->wtop -= DfClientHeight(wnd);
     }
     else     {
         /* ---- page down ---- */
-        if (wnd->wtop+ClientHeight(wnd) < wnd->wlines) {
-            wnd->wtop += ClientHeight(wnd);
-            if (wnd->wtop>wnd->wlines-ClientHeight(wnd))
-                wnd->wtop=wnd->wlines-ClientHeight(wnd);
+        if (wnd->wtop+DfClientHeight(wnd) < wnd->wlines) {
+            wnd->wtop += DfClientHeight(wnd);
+            if (wnd->wtop>wnd->wlines-DfClientHeight(wnd))
+                wnd->wtop=wnd->wlines-DfClientHeight(wnd);
         }
     }
     if (wnd->wtop < 0)
         wnd->wtop = 0;
-    SendMessage(wnd, PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
 
 /* ------------ HORIZSCROLLPAGE Message -------------- */
-static void HorizScrollPageMsg(WINDOW wnd, PARAM p1)
+static void HorizScrollPageMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     /* --- horizontal scroll one page --- */
     if ((int) p1 == FALSE)
         /* ---- page left ----- */
-        wnd->wleft -= ClientWidth(wnd);
+        wnd->wleft -= DfClientWidth(wnd);
     else    {
         /* ---- page right ----- */
-        wnd->wleft += ClientWidth(wnd);
-        if (wnd->wleft > wnd->textwidth-ClientWidth(wnd))
-            wnd->wleft = wnd->textwidth-ClientWidth(wnd);
+        wnd->wleft += DfClientWidth(wnd);
+        if (wnd->wleft > wnd->textwidth-DfClientWidth(wnd))
+            wnd->wleft = wnd->textwidth-DfClientWidth(wnd);
     }
     if (wnd->wleft < 0)
         wnd->wleft = 0;
-    SendMessage(wnd, PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
 
-/* ------------ SCROLLDOC Message -------------- */
-static void ScrollDocMsg(WINDOW wnd, PARAM p1)
+/* ------------ DFM_SCROLLDOC Message -------------- */
+static void ScrollDocMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     /* --- scroll to beginning or end of document --- */
     if ((int) p1)
         wnd->wtop = wnd->wleft = 0;
-    else if (wnd->wtop+ClientHeight(wnd) < wnd->wlines){
-        wnd->wtop = wnd->wlines-ClientHeight(wnd);
+    else if (wnd->wtop+DfClientHeight(wnd) < wnd->wlines){
+        wnd->wtop = wnd->wlines-DfClientHeight(wnd);
         wnd->wleft = 0;
     }
-    SendMessage(wnd, PAINT, 0, 0);
+    DfSendMessage(wnd, DFM_PAINT, 0, 0);
 }
 
-/* ------------ PAINT Message -------------- */
-static void PaintMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ------------ DFM_PAINT Message -------------- */
+static void PaintMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
     /* ------ paint the client area ----- */
-    RECT rc, rcc;
+    DFRECT rc, rcc;
     int y;
     char blankline[201];
 
     /* ----- build the rectangle to paint ----- */
-    if ((RECT *)p1 == NULL)
-        rc=RelativeWindowRect(wnd, WindowRect(wnd));
+    if ((DFRECT *)p1 == NULL)
+        rc=DfRelativeWindowRect(wnd, DfWindowRect(wnd));
     else
-        rc= *(RECT *)p1;
-    if (TestAttribute(wnd, HASBORDER) &&
-            RectRight(rc) >= WindowWidth(wnd)-1) {
-        if (RectLeft(rc) >= WindowWidth(wnd)-1)
+        rc= *(DFRECT *)p1;
+    if (DfTestAttribute(wnd, DF_HASBORDER) &&
+            DfRectRight(rc) >= DfWindowWidth(wnd)-1) {
+        if (DfRectLeft(rc) >= DfWindowWidth(wnd)-1)
             return;
-        RectRight(rc) = WindowWidth(wnd)-2;
+        DfRectRight(rc) = DfWindowWidth(wnd)-2;
     }
-    rcc = AdjustRectangle(wnd, rc);
+    rcc = DfAdjustRectangle(wnd, rc);
 
-	if (!p2 && wnd != inFocus)
-		ClipString++;
+	if (!p2 && wnd != DfInFocus)
+		DfClipString++;
 
     /* ----- blank line for padding ----- */
-    memset(blankline, ' ', SCREENWIDTH);
-    blankline[RectRight(rcc)+1] = '\0';
+    memset(blankline, ' ', DfGetScreenWidth());
+    blankline[DfRectRight(rcc)+1] = '\0';
 
-    /* ------- each line within rectangle ------ */
-    for (y = RectTop(rc); y <= RectBottom(rc); y++){
+    /* ------- each line DfWithin rectangle ------ */
+    for (y = DfRectTop(rc); y <= DfRectBottom(rc); y++){
         int yy;
         /* ---- test outside of Client area ---- */
-        if (TestAttribute(wnd,
-                    HASBORDER | HASTITLEBAR))    {
-            if (y < TopBorderAdj(wnd))
+        if (DfTestAttribute(wnd,
+                    DF_HASBORDER | DF_HASTITLEBAR))    {
+            if (y < DfTopBorderAdj(wnd))
                 continue;
-            if (y > WindowHeight(wnd)-2)
+            if (y > DfWindowHeight(wnd)-2)
                 continue;
         }
-        yy = y-TopBorderAdj(wnd);
+        yy = y-DfTopBorderAdj(wnd);
         if (yy < wnd->wlines-wnd->wtop)
             /* ---- paint a text line ---- */
-            WriteTextLine(wnd, &rc,
+            DfWriteTextLine(wnd, &rc,
                         yy+wnd->wtop, FALSE);
         else    {
             /* ---- paint a blank line ---- */
-            SetStandardColor(wnd);
-            writeline(wnd, blankline+RectLeft(rcc),
-                    RectLeft(rcc)+BorderAdj(wnd), y, FALSE);
+            DfSetStandardColor(wnd);
+            DfWriteLine(wnd, blankline+DfRectLeft(rcc),
+                    DfRectLeft(rcc)+DfBorderAdj(wnd), y, FALSE);
         }
     }
     /* ------- position the scroll box ------- */
-    if (TestAttribute(wnd, VSCROLLBAR|HSCROLLBAR)) {
+    if (DfTestAttribute(wnd, DF_VSCROLLBAR|DF_HSCROLLBAR)) {
         int hscrollbox = ComputeHScrollBox(wnd);
         int vscrollbox = ComputeVScrollBox(wnd);
         if (hscrollbox != wnd->HScrollBox ||
                 vscrollbox != wnd->VScrollBox)    {
             wnd->HScrollBox = hscrollbox;
             wnd->VScrollBox = vscrollbox;
-            SendMessage(wnd, BORDER, p1, 0);
+            DfSendMessage(wnd, DFM_BORDER, p1, 0);
         }
     }
-	if (!p2 && wnd != inFocus)
-		--ClipString;
+	if (!p2 && wnd != DfInFocus)
+		--DfClipString;
 }
 
-/* ------------ CLOSE_WINDOW Message -------------- */
-static void CloseWindowMsg(WINDOW wnd)
+/* ------------ DFM_CLOSE_WINDOW Message -------------- */
+static void CloseWindowMsg(DFWINDOW wnd)
 {
-    SendMessage(wnd, CLEARTEXT, 0, 0);
+    DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
     if (wnd->TextPointers != NULL)    {
         free(wnd->TextPointers);
         wnd->TextPointers = NULL;
     }
 }
 
-/* ----------- TEXTBOX Message-processing Module ----------- */
-int TextBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
+/* ----------- DF_TEXTBOX Message-processing Module ----------- */
+int DfTextBoxProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 {
     switch (msg)    {
-        case CREATE_WINDOW:
+        case DFM_CREATE_WINDOW:
             wnd->HScrollBox = wnd->VScrollBox = 1;
-            ClearTextPointers(wnd);
+            DfClearTextPointers(wnd);
             break;
-        case ADDTEXT:
+        case DFM_ADDTEXT:
             return AddTextMsg(wnd, (char *) p1);
-		case DELETETEXT:
+		case DFM_DELETETEXT:
             DeleteTextMsg(wnd, (int) p1);
             return TRUE;
-		case INSERTTEXT:
+		case DFM_INSERTTEXT:
             InsertTextMsg(wnd, (char *) p1, (int) p2);
             return TRUE;
-        case SETTEXT:
+        case DFM_SETTEXT:
             SetTextMsg(wnd, (char *) p1);
 			return TRUE;
-        case CLEARTEXT:
+        case DFM_CLEARTEXT:
             ClearTextMsg(wnd);
             break;
-        case KEYBOARD:
-            if (WindowMoving || WindowSizing)
+        case DFM_KEYBOARD:
+            if (DfWindowMoving || DfWindowSizing)
                 break;
             if (KeyboardMsg(wnd, p1))
                 return TRUE;
             break;
-        case LEFT_BUTTON:
-            if (WindowSizing || WindowMoving)
+        case DFM_LEFT_BUTTON:
+            if (DfWindowSizing || DfWindowMoving)
                 return FALSE;
             if (LeftButtonMsg(wnd, p1, p2))
                 return TRUE;
@@ -472,43 +470,44 @@ int TextBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
             if (MouseMovedMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case BUTTON_RELEASED:
+        case DFM_BUTTON_RELEASED:
             ButtonReleasedMsg(wnd);
             break;
-        case SCROLL:
+        case DFM_SCROLL:
             return ScrollMsg(wnd, p1);
-        case HORIZSCROLL:
+        case DFM_HORIZSCROLL:
             return HorizScrollMsg(wnd, p1);
-        case SCROLLPAGE:
+        case DFM_SCROLLPAGE:
             ScrollPageMsg(wnd, p1);
             return TRUE;
-        case HORIZPAGE:
+        case DFM_HORIZPAGE:
             HorizScrollPageMsg(wnd, p1);
             return TRUE;
-        case SCROLLDOC:
+        case DFM_SCROLLDOC:
             ScrollDocMsg(wnd, p1);
             return TRUE;
-        case PAINT:
-            if (isVisible(wnd))    {
+        case DFM_PAINT:
+            if (DfIsVisible(wnd))
+            {
                 PaintMsg(wnd, p1, p2);
                 return FALSE;
             }
             break;
-        case CLOSE_WINDOW:
+        case DFM_CLOSE_WINDOW:
             CloseWindowMsg(wnd);
             break;
         default:
             break;
     }
-    return BaseWndProc(TEXTBOX, wnd, msg, p1, p2);
+    return DfBaseWndProc(DF_TEXTBOX, wnd, msg, p1, p2);
 }
 
 /* ------ compute the vertical scroll box position from
                    the text pointers --------- */
-static int ComputeVScrollBox(WINDOW wnd)
+static int ComputeVScrollBox(DFWINDOW wnd)
 {
-    int pagelen = wnd->wlines - ClientHeight(wnd);
-    int barlen = ClientHeight(wnd)-2;
+    int pagelen = wnd->wlines - DfClientHeight(wnd);
+    int barlen = DfClientHeight(wnd)-2;
     int lines_tick;
     int vscrollbox;
 
@@ -520,23 +519,23 @@ static int ComputeVScrollBox(WINDOW wnd)
         else
             lines_tick = barlen / pagelen;
         vscrollbox = 1 + (wnd->wtop / lines_tick);
-        if (vscrollbox > ClientHeight(wnd)-2 ||
-                wnd->wtop + ClientHeight(wnd) >= wnd->wlines)
-            vscrollbox = ClientHeight(wnd)-2;
+        if (vscrollbox > DfClientHeight(wnd)-2 ||
+                wnd->wtop + DfClientHeight(wnd) >= wnd->wlines)
+            vscrollbox = DfClientHeight(wnd)-2;
     }
     return vscrollbox;
 }
 
 /* ---- compute top text line from scroll box position ---- */
-static void ComputeWindowTop(WINDOW wnd)
+static void ComputeWindowTop(DFWINDOW wnd)
 {
-    int pagelen = wnd->wlines - ClientHeight(wnd);
+    int pagelen = wnd->wlines - DfClientHeight(wnd);
     if (wnd->VScrollBox == 0)
         wnd->wtop = 0;
-    else if (wnd->VScrollBox == ClientHeight(wnd)-2)
+    else if (wnd->VScrollBox == DfClientHeight(wnd)-2)
         wnd->wtop = pagelen;
     else    {
-        int barlen = ClientHeight(wnd)-2;
+        int barlen = DfClientHeight(wnd)-2;
         int lines_tick;
 
         if (pagelen > barlen)
@@ -544,7 +543,7 @@ static void ComputeWindowTop(WINDOW wnd)
         else
             lines_tick = pagelen ? (barlen / pagelen) : 0;
         wnd->wtop = (wnd->VScrollBox-1) * lines_tick;
-        if (wnd->wtop + ClientHeight(wnd) > wnd->wlines)
+        if (wnd->wtop + DfClientHeight(wnd) > wnd->wlines)
             wnd->wtop = pagelen;
     }
     if (wnd->wtop < 0)
@@ -553,10 +552,10 @@ static void ComputeWindowTop(WINDOW wnd)
 
 /* ------ compute the horizontal scroll box position from
                    the text pointers --------- */
-static int ComputeHScrollBox(WINDOW wnd)
+static int ComputeHScrollBox(DFWINDOW wnd)
 {
-    int pagewidth = wnd->textwidth - ClientWidth(wnd);
-    int barlen = ClientWidth(wnd)-2;
+    int pagewidth = wnd->textwidth - DfClientWidth(wnd);
+    int barlen = DfClientWidth(wnd)-2;
     int chars_tick;
     int hscrollbox;
 
@@ -568,24 +567,24 @@ static int ComputeHScrollBox(WINDOW wnd)
         else
             chars_tick = pagewidth ? (barlen / pagewidth) : 0;
         hscrollbox = 1 + (chars_tick ? (wnd->wleft / chars_tick) : 0);
-        if (hscrollbox > ClientWidth(wnd)-2 ||
-                wnd->wleft + ClientWidth(wnd) >= wnd->textwidth)
-            hscrollbox = ClientWidth(wnd)-2;
+        if (hscrollbox > DfClientWidth(wnd)-2 ||
+                wnd->wleft + DfClientWidth(wnd) >= wnd->textwidth)
+            hscrollbox = DfClientWidth(wnd)-2;
     }
     return hscrollbox;
 }
 
 /* ---- compute left column from scroll box position ---- */
-static void ComputeWindowLeft(WINDOW wnd)
+static void ComputeWindowLeft(DFWINDOW wnd)
 {
-    int pagewidth = wnd->textwidth - ClientWidth(wnd);
+    int pagewidth = wnd->textwidth - DfClientWidth(wnd);
 
     if (wnd->HScrollBox == 0)
         wnd->wleft = 0;
-    else if (wnd->HScrollBox == ClientWidth(wnd)-2)
+    else if (wnd->HScrollBox == DfClientWidth(wnd)-2)
         wnd->wleft = pagewidth;
     else    {
-        int barlen = ClientWidth(wnd)-2;
+        int barlen = DfClientWidth(wnd)-2;
         int chars_tick;
 
         if (pagewidth > barlen)
@@ -593,7 +592,7 @@ static void ComputeWindowLeft(WINDOW wnd)
         else
             chars_tick = barlen / pagewidth;
         wnd->wleft = (wnd->HScrollBox-1) * chars_tick;
-        if (wnd->wleft + ClientWidth(wnd) > wnd->textwidth)
+        if (wnd->wleft + DfClientWidth(wnd) > wnd->textwidth)
             wnd->wleft = pagewidth;
     }
     if (wnd->wleft < 0)
@@ -601,74 +600,65 @@ static void ComputeWindowLeft(WINDOW wnd)
 }
 
 /* ----- get the text to a specified line ----- */
-static char *GetTextLine(WINDOW wnd, int selection)
+static char *GetTextLine(DFWINDOW wnd, int selection)
 {
     char *line;
     int len = 0;
     char *cp, *cp1;
-    cp = cp1 = TextLine(wnd, selection);
+    cp = cp1 = DfTextLine(wnd, selection);
     while (*cp && *cp != '\n')    {
         len++;
         cp++;
     }
-    line = DFmalloc(len+7);
+    line = DfMalloc(len+7);
     memmove(line, cp1, len);
     line[len] = '\0';
     return line;
 }
 
 /* ------- write a line of text to a textbox window ------- */
-void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
+void DfWriteTextLine(DFWINDOW wnd, DFRECT *rcc, int y, BOOL reverse)
 {
     int len = 0;
     int dif = 0;
     unsigned char line[200];
-    RECT rc;
+    DFRECT rc;
     unsigned char *lp, *svlp;
     int lnlen;
     int i;
     BOOL trunc = FALSE;
 
     /* ------ make sure y is inside the window ----- */
-    if (y < wnd->wtop || y >= wnd->wtop+ClientHeight(wnd))
+    if (y < wnd->wtop || y >= wnd->wtop+DfClientHeight(wnd))
         return;
 
-    /* ---- build the retangle within which can write ---- */
+    /* ---- build the retangle DfWithin which can write ---- */
     if (rcc == NULL)    {
-        rc = RelativeWindowRect(wnd, WindowRect(wnd));
-        if (TestAttribute(wnd, HASBORDER) &&
-                RectRight(rc) >= WindowWidth(wnd)-1)
-            RectRight(rc) = WindowWidth(wnd)-2;
+        rc = DfRelativeWindowRect(wnd, DfWindowRect(wnd));
+        if (DfTestAttribute(wnd, DF_HASBORDER) &&
+                DfRectRight(rc) >= DfWindowWidth(wnd)-1)
+            DfRectRight(rc) = DfWindowWidth(wnd)-2;
     }
     else
         rc = *rcc;
 
-    /* ----- make sure rectangle is within window ------ */
-    if (RectLeft(rc) >= WindowWidth(wnd)-1)
+    /* ----- make sure rectangle is DfWithin window ------ */
+    if (DfRectLeft(rc) >= DfWindowWidth(wnd)-1)
         return;
-    if (RectRight(rc) == 0)
+    if (DfRectRight(rc) == 0)
         return;
-    rc = AdjustRectangle(wnd, rc);
-    if (y-wnd->wtop<RectTop(rc) || y-wnd->wtop>RectBottom(rc))
+    rc = DfAdjustRectangle(wnd, rc);
+    if (y-wnd->wtop<DfRectTop(rc) || y-wnd->wtop>DfRectBottom(rc))
         return;
 
     /* --- get the text and length of the text line --- */
     lp = svlp = GetTextLine(wnd, y);
     if (svlp == NULL)
         return;
-    lnlen = LineLength(lp);
+    lnlen = DfLineLength(lp);
 
-	if (wnd->protect)	{
-		char *pp = lp;
-		while (*pp)	{
-			if (isprint(*pp))
-				*pp = '*';
-			pp++;
-		}
-	}
-
-    /* -------- insert block color change controls ------- */
-    if (TextBlockMarked(wnd))    {
+    /* -------- insert block DfColor change controls ------- */
+    if (DfTextBlockMarked(wnd))    {
         int bbl = wnd->BlkBegLine;
         int bel = wnd->BlkEndLine;
         int bbc = wnd->BlkBegCol;
@@ -700,24 +690,24 @@ void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
 				strcpy(lp, " ");
 				blkend++;
 			}
-            /* ----- insert the reset color token ----- */
+            /* ----- insert the reset DfColor token ----- */
             memmove(lp+blkend+1,lp+blkend,strlen(lp+blkend)+1);
-            lp[blkend] = RESETCOLOR;
-            /* ----- insert the change color token ----- */
+            lp[blkend] = DF_RESETCOLOR;
+            /* ----- insert the change DfColor token ----- */
             memmove(lp+blkbeg+3,lp+blkbeg,strlen(lp+blkbeg)+1);
-            lp[blkbeg] = CHANGECOLOR;
-            /* ----- insert the color tokens ----- */
-            SetReverseColor(wnd);
-            lp[blkbeg+1] = foreground | 0x80;
-            lp[blkbeg+2] = background | 0x80;
+            lp[blkbeg] = DF_CHANGECOLOR;
+            /* ----- insert the DfColor tokens ----- */
+            DfSetReverseColor(wnd);
+            lp[blkbeg+1] = DfForeground | 0x80;
+            lp[blkbeg+2] = DfBackground | 0x80;
             lnlen += 4;
         }
     }
-    /* - make sure left margin doesn't overlap color change - */
+    /* - make sure left margin doesn't overlap DfColor change - */
     for (i = 0; i < wnd->wleft+3; i++)    {
         if (*(lp+i) == '\0')
             break;
-        if (*(unsigned char *)(lp + i) == RESETCOLOR)
+        if (*(unsigned char *)(lp + i) == DF_RESETCOLOR)
             break;
     }
     if (*(lp+i) && i < wnd->wleft+3)    {
@@ -727,11 +717,11 @@ void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
             lp += 4;
     }
     else     {
-        /* --- it does, shift the color change over --- */
+        /* --- it does, shift the DfColor change over --- */
         for (i = 0; i < wnd->wleft; i++)    {
             if (*(lp+i) == '\0')
                 break;
-            if (*(unsigned char *)(lp + i) == CHANGECOLOR)    {
+            if (*(unsigned char *)(lp + i) == DF_CHANGECOLOR)    {
                 *(lp+wnd->wleft+2) = *(lp+i+2);
                 *(lp+wnd->wleft+1) = *(lp+i+1);
                 *(lp+wnd->wleft) = *(lp+i);
@@ -745,29 +735,29 @@ void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
             lnlen = 0;
         else
             lp += wnd->wleft;
-        if (lnlen > RectLeft(rc))    {
+        if (lnlen > DfRectLeft(rc))    {
             /* ---- the line exceeds the rectangle ---- */
-            int ct = RectLeft(rc);
+            int ct = DfRectLeft(rc);
             char *initlp = lp;
             /* --- point to end of clipped line --- */
             while (ct)    {
-                if (*(unsigned char *)lp == CHANGECOLOR)
+                if (*(unsigned char *)lp == DF_CHANGECOLOR)
                     lp += 3;
-                else if (*(unsigned char *)lp == RESETCOLOR)
+                else if (*(unsigned char *)lp == DF_RESETCOLOR)
                     lp++;
                 else
                     lp++, --ct;
             }
-            if (RectLeft(rc))    {
+            if (DfRectLeft(rc))    {
                 char *lpp = lp;
                 while (*lpp)    {
-                    if (*(unsigned char*)lpp==CHANGECOLOR)
+                    if (*(unsigned char*)lpp==DF_CHANGECOLOR)
                         break;
-                    if (*(unsigned char*)lpp==RESETCOLOR) {
+                    if (*(unsigned char*)lpp==DF_RESETCOLOR) {
                         lpp = lp;
                         while (lpp >= initlp)    {
                             if (*(unsigned char *)lpp ==
-                                            CHANGECOLOR) {
+                                            DF_CHANGECOLOR) {
                                 lp -= 3;
                                 memmove(lp,lpp,3);
                                 break;
@@ -779,8 +769,8 @@ void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
                     lpp++;
                 }
             }
-            lnlen = LineLength(lp);
-            len = min(lnlen, RectWidth(rc));
+            lnlen = DfLineLength(lp);
+            len = min(lnlen, DfRectWidth(rc));
             dif = strlen(lp) - lnlen;
             len += dif;
             if (len > 0)
@@ -788,31 +778,31 @@ void WriteTextLine(WINDOW wnd, RECT *rcc, int y, BOOL reverse)
         }
     }
     /* -------- pad the line --------- */
-    while (len < RectWidth(rc)+dif)
+    while (len < DfRectWidth(rc)+dif)
         line[len++] = ' ';
     line[len] = '\0';
     dif = 0;
-    /* ------ establish the line's main color ----- */
+    /* ------ establish the line's main DfColor ----- */
     if (reverse)    {
         char *cp = line;
-        SetReverseColor(wnd);
-        while ((cp = strchr(cp, CHANGECOLOR)) != NULL)    {
+        DfSetReverseColor(wnd);
+        while ((cp = strchr(cp, DF_CHANGECOLOR)) != NULL)    {
             cp += 2;
-            *cp++ = background | 0x80;
+            *cp++ = DfBackground | 0x80;
         }
-        if (*(unsigned char *)line == CHANGECOLOR)
+        if (*(unsigned char *)line == DF_CHANGECOLOR)
             dif = 3;
     }
     else
-        SetStandardColor(wnd);
+        DfSetStandardColor(wnd);
     /* ------- display the line -------- */
-    writeline(wnd, line+dif,
-                RectLeft(rc)+BorderAdj(wnd),
-                    y-wnd->wtop+TopBorderAdj(wnd), FALSE);
+    DfWriteLine(wnd, line+dif,
+                DfRectLeft(rc)+DfBorderAdj(wnd),
+                    y-wnd->wtop+DfTopBorderAdj(wnd), FALSE);
     free(svlp);
 }
 
-void MarkTextBlock(WINDOW wnd, int BegLine, int BegCol,
+void DfMarkTextBlock(DFWINDOW wnd, int BegLine, int BegCol,
                                int EndLine, int EndCol)
 {
     wnd->BlkBegLine = BegLine;
@@ -822,16 +812,16 @@ void MarkTextBlock(WINDOW wnd, int BegLine, int BegCol,
 }
 
 /* ----- clear and initialize text line pointer array ----- */
-void ClearTextPointers(WINDOW wnd)
+void DfClearTextPointers(DFWINDOW wnd)
 {
-    wnd->TextPointers = DFrealloc(wnd->TextPointers, sizeof(int));
+    wnd->TextPointers = DfRealloc(wnd->TextPointers, sizeof(int));
     *(wnd->TextPointers) = 0;
 }
 
 #define INITLINES 100
 
 /* ---- build array of pointers to text lines ---- */
-void BuildTextPointers(WINDOW wnd)
+void DfBuildTextPointers(DFWINDOW wnd)
 {
     char *cp = wnd->text, *cp1;
     int incrs = INITLINES;
@@ -840,35 +830,34 @@ void BuildTextPointers(WINDOW wnd)
     while (*cp)    {
         if (incrs == INITLINES)    {
             incrs = 0;
-            wnd->TextPointers = DFrealloc(wnd->TextPointers,
+            wnd->TextPointers = DfRealloc(wnd->TextPointers,
                     (wnd->wlines + INITLINES) * sizeof(int));
         }
-        off = (unsigned int) (cp - wnd->text);
+        off = (unsigned int) ((unsigned int)cp - (unsigned int)wnd->text);
         *((wnd->TextPointers) + wnd->wlines) = off;
         wnd->wlines++;
         incrs++;
         cp1 = cp;
         while (*cp && *cp != '\n')
             cp++;
-        wnd->textwidth = max(wnd->textwidth,
-                        (unsigned int) (cp - cp1));
+        wnd->textwidth = max(wnd->textwidth, (int)(cp - cp1));
         if (*cp)
             cp++;
     }
 }
 
-static void MoveScrollBox(WINDOW wnd, int vscrollbox)
+static void MoveScrollBox(DFWINDOW wnd, int vscrollbox)
 {
-    foreground = FrameForeground(wnd);
-    background = FrameBackground(wnd);
-    wputch(wnd, SCROLLBARCHAR, WindowWidth(wnd)-1,
+    DfForeground = DfFrameForeground(wnd);
+    DfBackground = DfFrameBackground(wnd);
+    DfWPutch(wnd, DF_SCROLLBARCHAR, DfWindowWidth(wnd)-1,
             wnd->VScrollBox+1);
-    wputch(wnd, SCROLLBOXCHAR, WindowWidth(wnd)-1,
+    DfWPutch(wnd, DF_SCROLLBOXCHAR, DfWindowWidth(wnd)-1,
             vscrollbox+1);
     wnd->VScrollBox = vscrollbox;
 }
 
-int TextLineNumber(WINDOW wnd, char *lp)
+int DfTextLineNumber(DFWINDOW wnd, char *lp)
 {
     int lineno;
     char *cp;
@@ -881,3 +870,5 @@ int TextLineNumber(WINDOW wnd, char *lp)
     }
     return lineno-1;
 }
+
+/* EOF */

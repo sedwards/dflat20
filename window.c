@@ -2,101 +2,102 @@
 
 #include "dflat.h"
 
-WINDOW inFocus = NULL;
+DFWINDOW DfInFocus = NULL;
 
-int foreground, background;   /* current video colors */
+int DfForeground, DfBackground;   /* current video colors */
 
-static void TopLine(WINDOW, int, RECT);
+static void TopLine(DFWINDOW, int, DFRECT);
 
 /* --------- create a window ------------ */
-WINDOW CreateWindow(
-    CLASS Class,              /* class of this window       */
-    const char *ttl,          /* title or NULL              */
+DFWINDOW DfDfCreateWindow(
+    DFCLASS class,              /* class of this window       */
+    char *ttl,                /* title or NULL              */
     int left, int top,        /* upper left coordinates     */
     int height, int width,    /* dimensions                 */
     void *extension,          /* pointer to additional data */
-    WINDOW parent,            /* parent of this window      */
-    int (*wndproc)(struct window *,enum messages,PARAM,PARAM),
+    DFWINDOW parent,            /* parent of this window      */
+    int (*wndproc)(struct DfWindow *,enum DfMessages,DF_PARAM,DF_PARAM),
     int attrib)               /* window attribute           */
 {
-    WINDOW wnd = DFcalloc(1, sizeof(struct window));
-    get_videomode();
+    DFWINDOW wnd = DfCalloc(1, sizeof(struct DfWindow));
     if (wnd != NULL)    {
         int base;
         /* ----- height, width = -1: fill the screen ------- */
         if (height == -1)
-            height = SCREENHEIGHT;
+            height = DfScreenHeight;
         if (width == -1)
-            width = SCREENWIDTH;
+            width = DfScreenWidth;
         /* ----- coordinates -1, -1 = center the window ---- */
         if (left == -1)
-            wnd->rc.lf = (SCREENWIDTH-width)/2;
+            wnd->rc.lf = (DfScreenWidth-width)/2;
         else
             wnd->rc.lf = left;
         if (top == -1)
-            wnd->rc.tp = (SCREENHEIGHT-height)/2;
+            wnd->rc.tp = (DfScreenHeight-height)/2;
         else
             wnd->rc.tp = top;
         wnd->attrib = attrib;
         if (ttl != NULL)
-			if (*ttl != '\0')
-	            AddAttribute(wnd, HASTITLEBAR);
+            DfAddAttribute(wnd, DF_HASTITLEBAR);
         if (wndproc == NULL)
-            wnd->wndproc = classdefs[Class].wndproc;
+            wnd->wndproc = DfClassDefs[class].wndproc;
         else
             wnd->wndproc = wndproc;
         /* ---- derive attributes of base classes ---- */
-        base = Class;
+        base = class;
         while (base != -1)    {
-            AddAttribute(wnd, classdefs[base].attrib);
-            base = classdefs[base].base;
+            DfAddAttribute(wnd, DfClassDefs[base].attrib);
+            base = DfClassDefs[base].base;
         }
-        if (parent)	{
-			if (!TestAttribute(wnd, NOCLIP))    {
-            	/* -- keep upper left within borders of parent - */
-            	wnd->rc.lf = max(wnd->rc.lf,GetClientLeft(parent));
-            	wnd->rc.tp = max(wnd->rc.tp,GetClientTop(parent));
+        if (parent)
+		{
+			if (!DfTestAttribute(wnd, DF_NOCLIP))
+			{
+            	/* -- keep upper left DfWithin borders of parent - */
+            	wnd->rc.lf = max(wnd->rc.lf,DfGetClientLeft(parent));
+            	wnd->rc.tp = max(wnd->rc.tp,DfGetClientTop(parent));
         	}
 		}
 		else
-			parent = ApplicationWindow;
-        wnd->Class = Class;
+			parent = DfApplicationWindow;
+
+        wnd->class = class;
         wnd->extension = extension;
-        wnd->rc.rt = GetLeft(wnd)+width-1;
-        wnd->rc.bt = GetTop(wnd)+height-1;
+        wnd->rc.rt = DfGetLeft(wnd)+width-1;
+        wnd->rc.bt = DfGetTop(wnd)+height-1;
         wnd->ht = height;
         wnd->wd = width;
         if (ttl != NULL)
-            InsertTitle(wnd, ttl);
+            DfInsertTitle(wnd, ttl);
         wnd->parent = parent;
-        wnd->oldcondition = wnd->condition = ISRESTORED;
+        wnd->oldcondition = wnd->condition = DF_SRESTORED;
         wnd->RestoredRC = wnd->rc;
-		InitWindowColors(wnd);
-        SendMessage(wnd, CREATE_WINDOW, 0, 0);
-        if (isVisible(wnd))
-            SendMessage(wnd, SHOW_WINDOW, 0, 0);
+		DfInitWindowColors(wnd);
+        DfSendMessage(wnd, DFM_CREATE_WINDOW, 0, 0);
+        if (DfIsVisible(wnd))
+            DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
     }
     return wnd;
 }
 
 /* -------- add a title to a window --------- */
-void AddTitle(WINDOW wnd, const char *ttl)
+void DfAddTitle(DFWINDOW wnd, char *ttl)
 {
-    InsertTitle(wnd, ttl);
-    SendMessage(wnd, BORDER, 0, 0);
+	DfInsertTitle(wnd, ttl);
+	DfSendMessage(wnd, DFM_BORDER, 0, 0);
 }
 
 /* ----- insert a title into a window ---------- */
-void InsertTitle(WINDOW wnd, const char *ttl)
+void DfInsertTitle(DFWINDOW wnd, char *ttl)
 {
-    wnd->title=DFrealloc(wnd->title,strlen(ttl)+1);
-    strcpy(wnd->title, ttl);
+	wnd->title=DfRealloc(wnd->title,strlen(ttl)+1);
+	strcpy(wnd->title, ttl);
 }
 
 static unsigned char line[300];
 
 /* ------ write a line to video window client area ------ */
-void writeline(WINDOW wnd, char *str, int x, int y, BOOL pad)
+void DfWriteLine(DFWINDOW wnd, char *str, int x, int y, BOOL pad)
 {
     char *cp;
     int len;
@@ -104,180 +105,168 @@ void writeline(WINDOW wnd, char *str, int x, int y, BOOL pad)
 	char wline[200];
 
 	memset(wline, 0, 200);
-    len = LineLength(str);
+    len = DfLineLength(str);
     dif = strlen(str) - len;
-    strncpy(wline, str, ClientWidth(wnd) + dif);
+    strncpy(wline, str, DfClientWidth(wnd) + dif);
     if (pad)    {
         cp = wline+strlen(wline);
-        while (len++ < ClientWidth(wnd)-x)
+        while (len++ < DfClientWidth(wnd)-x)
             *cp++ = ' ';
     }
-    wputs(wnd, wline, x, y);
+    DfWPuts(wnd, wline, x, y);
 }
 
-RECT AdjustRectangle(WINDOW wnd, RECT rc)
+DFRECT DfAdjustRectangle(DFWINDOW wnd, DFRECT rc)
 {
     /* -------- adjust the rectangle ------- */
-    if (TestAttribute(wnd, HASBORDER))    {
-        if (RectLeft(rc) == 0)
+    if (DfTestAttribute(wnd, DF_HASBORDER))    {
+        if (DfRectLeft(rc) == 0)
             --rc.rt;
-        else if (RectLeft(rc) < RectRight(rc) &&
-                RectLeft(rc) < WindowWidth(wnd)+1)
+        else if (DfRectLeft(rc) < DfRectRight(rc) &&
+                DfRectLeft(rc) < DfWindowWidth(wnd)+1)
             --rc.lf;
     }
-    if (TestAttribute(wnd, HASBORDER | HASTITLEBAR))    {
-        if (RectTop(rc) == 0)
+    if (DfTestAttribute(wnd, DF_HASBORDER | DF_HASTITLEBAR))    {
+        if (DfRectTop(rc) == 0)
             --rc.bt;
-        else if (RectTop(rc) < RectBottom(rc) &&
-                RectTop(rc) < WindowHeight(wnd)+1)
+        else if (DfRectTop(rc) < DfRectBottom(rc) &&
+                DfRectTop(rc) < DfWindowHeight(wnd)+1)
             --rc.tp;
     }
-    RectRight(rc) = max(RectLeft(rc),
-                        min(RectRight(rc),WindowWidth(wnd)));
-    RectBottom(rc) = max(RectTop(rc),
-                        min(RectBottom(rc),WindowHeight(wnd)));
+    DfRectRight(rc) = max(DfRectLeft(rc),
+                        min(DfRectRight(rc),DfWindowWidth(wnd)));
+    DfRectBottom(rc) = max(DfRectTop(rc),
+                        min(DfRectBottom(rc),DfWindowHeight(wnd)));
     return rc;
 }
 
 /* -------- display a window's title --------- */
-void DisplayTitle(WINDOW wnd, RECT *rcc)
+void DfDisplayTitle(DFWINDOW wnd, DFRECT *rcc)
 {
-	if (GetTitle(wnd) != NULL)	{
-    	int tlen = min(strlen(GetTitle(wnd)), WindowWidth(wnd)-2);
-    	int tend = WindowWidth(wnd)-3-BorderAdj(wnd);
-    	RECT rc;
+	if (DfGetTitle(wnd) != NULL)
+	{
+		int tlen = min((int)strlen(DfGetTitle(wnd)), (int)DfWindowWidth(wnd)-2);
+		int tend = DfWindowWidth(wnd)-3-DfBorderAdj(wnd);
+		DFRECT rc;
 
-    	if (rcc == NULL)
-        	rc = RelativeWindowRect(wnd, WindowRect(wnd));
-    	else
-        	rc = *rcc;
-    	rc = AdjustRectangle(wnd, rc);
+		if (rcc == NULL)
+			rc = DfRelativeWindowRect(wnd, DfWindowRect(wnd));
+		else
+			rc = *rcc;
+		rc = DfAdjustRectangle(wnd, rc);
 
-    	if (SendMessage(wnd, TITLE, (PARAM) rcc, 0))    {
-        	if (wnd == inFocus)    {
-            	foreground = cfg.clr[TITLEBAR] [HILITE_COLOR] [FG];
-            	background = cfg.clr[TITLEBAR] [HILITE_COLOR] [BG];
-        	}
-        	else    {
-            	foreground = cfg.clr[TITLEBAR] [STD_COLOR] [FG];
-            	background = cfg.clr[TITLEBAR] [STD_COLOR] [BG];
-        	}
-        	memset(line,' ',WindowWidth(wnd));
+		if (DfSendMessage(wnd, DFM_TITLE, (DF_PARAM) rcc, 0))
+		{
+			if (wnd == DfInFocus)
+			{
+				DfForeground = DfCfg.clr[DF_TITLEBAR] [DF_HILITE_COLOR] [DF_FG];
+				DfBackground = DfCfg.clr[DF_TITLEBAR] [DF_HILITE_COLOR] [DF_BG];
+			}
+			else
+			{
+				DfForeground = DfCfg.clr[DF_TITLEBAR] [DF_STD_COLOR] [DF_FG];
+				DfBackground = DfCfg.clr[DF_TITLEBAR] [DF_STD_COLOR] [DF_BG];
+			}
+			memset(line,' ',DfWindowWidth(wnd));
 #ifdef INCLUDE_MINIMIZE
-        	if (wnd->condition != ISMINIMIZED)
+			if (wnd->condition != DF_ISMINIMIZED)
 #endif
-            	strncpy(line + ((WindowWidth(wnd)-2 - tlen) / 2),
-                	wnd->title, tlen);
-        	if (TestAttribute(wnd, CONTROLBOX))
-            	line[2-BorderAdj(wnd)] = CONTROLBOXCHAR;
-        	if (TestAttribute(wnd, MINMAXBOX))    {
-            	switch (wnd->condition)    {
-                	case ISRESTORED:
+			strncpy (line + ((DfWindowWidth(wnd)-2 - tlen) / 2),
+			         wnd->title, tlen);
+			if (DfTestAttribute(wnd, DF_CONTROLBOX))
+				line[2-DfBorderAdj(wnd)] = DF_CONTROLBOXCHAR;
+			if (DfTestAttribute(wnd, DF_MINMAXBOX))
+			{
+				switch (wnd->condition)
+				{
+					case DF_SRESTORED:
 #ifdef INCLUDE_MAXIMIZE
-                    	line[tend+1] = MAXPOINTER;
+						line[tend+1] = DF_MAXPOINTER;
 #endif
 #ifdef INCLUDE_MINIMIZE
-                    	line[tend]   = MINPOINTER;
+						line[tend]   = DF_MINPOINTER;
 #endif
-                    	break;
+						break;
 #ifdef INCLUDE_MINIMIZE
-                	case ISMINIMIZED:
-                    	line[tend+1] = MAXPOINTER;
-                    	break;
+					case DF_ISMINIMIZED:
+						line[tend+1] = DF_MAXPOINTER;
+						break;
 #endif
 #ifdef INCLUDE_MAXIMIZE
-                	case ISMAXIMIZED:
+					case DF_ISMAXIMIZED:
 #ifdef INCLUDE_MINIMIZE
-                    	line[tend]   = MINPOINTER;
+						line[tend]   = DF_MINPOINTER;
 #endif
 #ifdef INCLUDE_RESTORE
-                    	line[tend+1] = RESTOREPOINTER;
+						line[tend+1] = DF_RESTOREPOINTER;
 #endif
-                    	break;
+						break;
 #endif
-                	default:
-                    	break;
-            	}
-        	}
-        	line[RectRight(rc)+1] = line[tend+3] = '\0';
-			if (wnd != inFocus)
-				ClipString++;
-        	writeline(wnd, line+RectLeft(rc),
-                       	RectLeft(rc)+BorderAdj(wnd),
+					default:
+						break;
+				}
+			}
+			line[DfRectRight(rc)+1] = line[tend+3] = '\0';
+			if (wnd != DfInFocus)
+				DfClipString++;
+			DfWriteLine(wnd, line+DfRectLeft(rc),
+                       	DfRectLeft(rc)+DfBorderAdj(wnd),
                        	0,
                        	FALSE);
-			ClipString = 0;
-    	}
+			DfClipString = 0;
+		}
 	}
 }
 
-#ifdef INCLUDE_MINIMIZE
-#define MinTest() (wnd->condition == ISMINIMIZED) ||
-#else
-#define MinTest() /**/
-#endif
-
-#ifdef INCLUDE_MAXIMIZE
-#define MaxTest() (wnd->condition == ISMAXIMIZED) ||
-#else
-#define MaxTest() /**/
-#endif
-
-#define NoShadow(wnd)                    \
-     (TestAttribute(wnd, SHADOW) == 0 || \
-      MinTest()                          \
-      MaxTest()                          \
-	  cfg.mono)
-
 /* --- display right border shadow character of a window --- */
-static void near shadow_char(WINDOW wnd, int y)
+static void shadow_char(DFWINDOW wnd, int y)
 {
-    int fg = foreground;
-    int bg = background;
-    int x = WindowWidth(wnd);
-    int c = videochar(GetLeft(wnd)+x, GetTop(wnd)+y);
+    int fg = DfForeground;
+    int bg = DfBackground;
+    int x = DfWindowWidth(wnd);
+    char c = DfVideoChar(DfGetLeft(wnd)+x, DfGetTop(wnd)+y);
 
-	if (NoShadow(wnd))
+    if (DfTestAttribute(wnd, DF_SHADOW) == 0)
         return;
-    foreground = DARKGRAY;
-    background = BLACK;
-    wputch(wnd, c, x, y);
-    foreground = fg;
-    background = bg;
+    DfForeground = DARKGRAY;
+    DfBackground = BLACK;
+    DfWPutch(wnd, c, x, y);
+    DfForeground = fg;
+    DfBackground = bg;
 }
 
 /* --- display the bottom border shadow line for a window -- */
-static void near shadowline(WINDOW wnd, RECT rc)
+static void shadowline(DFWINDOW wnd, DFRECT rc)
 {
     int i;
-    int y = GetBottom(wnd)+1;
-    int fg = foreground;
-    int bg = background;
+    int y = DfGetBottom(wnd)+1;
+    int fg = DfForeground;
+    int bg = DfBackground;
 
-	if (NoShadow(wnd))
+    if ((DfTestAttribute(wnd, DF_SHADOW)) == 0)
         return;
-    for (i = 0; i < WindowWidth(wnd)+1; i++)
-        line[i] = videochar(GetLeft(wnd)+i, y);
+    for (i = 0; i < DfWindowWidth(wnd)+1; i++)
+        line[i] = DfVideoChar(DfGetLeft(wnd)+i, y);
     line[i] = '\0';
-    foreground = DARKGRAY;
-    background = BLACK;
-    line[RectRight(rc)+1] = '\0';
-    if (RectLeft(rc) == 0)
+    DfForeground = DARKGRAY;
+    DfBackground = BLACK;
+    line[DfRectRight(rc)+1] = '\0';
+    if (DfRectLeft(rc) == 0)
         rc.lf++;
-	ClipString++;
-    wputs(wnd, line+RectLeft(rc), RectLeft(rc),
-        WindowHeight(wnd));
-	--ClipString;
-    foreground = fg;
-    background = bg;
+	DfClipString++;
+    DfWPuts(wnd, line+DfRectLeft(rc), DfRectLeft(rc),
+        DfWindowHeight(wnd));
+	--DfClipString;
+    DfForeground = fg;
+    DfBackground = bg;
 }
 
-static RECT ParamRect(WINDOW wnd, RECT *rcc)
+static DFRECT ParamRect(DFWINDOW wnd, DFRECT *rcc)
 {
-	RECT rc;
+	DFRECT rc;
     if (rcc == NULL)    {
-        rc = RelativeWindowRect(wnd, WindowRect(wnd));
-	    if (TestAttribute(wnd, SHADOW))    {
+        rc = DfRelativeWindowRect(wnd, DfWindowRect(wnd));
+	    if (DfTestAttribute(wnd, DF_SHADOW))    {
     	    rc.rt++;
         	rc.bt++;
 	    }
@@ -287,183 +276,182 @@ static RECT ParamRect(WINDOW wnd, RECT *rcc)
 	return rc;
 }
 
-void PaintShadow(WINDOW wnd)
+void DfPaintShadow(DFWINDOW wnd)
 {
 	int y;
-	RECT rc = ParamRect(wnd, NULL);
-	for (y = 1; y < WindowHeight(wnd); y++)
+	DFRECT rc = ParamRect(wnd, NULL);
+	for (y = 1; y < DfWindowHeight(wnd); y++)
 		shadow_char(wnd, y);
-    shadowline(wnd, rc);
-}
-
-static unsigned int SeCorner(WINDOW wnd, unsigned int stdse)
-{
-	if (TestAttribute(wnd, SIZEABLE) && wnd->condition == ISRESTORED)
-		return SIZETOKEN;
-	return stdse;
+	shadowline(wnd, rc);
 }
 
 /* ------- display a window's border ----- */
-void RepaintBorder(WINDOW wnd, RECT *rcc)
+void DfRepaintBorder(DFWINDOW wnd, DFRECT *rcc)
 {
     int y;
-    unsigned int lin, side, ne, nw, se, sw;
-    RECT rc, clrc;
+    char lin, side, ne, nw, se, sw;
+    DFRECT rc, clrc;
 
-    if (!TestAttribute(wnd, HASBORDER))
+    if (!DfTestAttribute(wnd, DF_HASBORDER))
         return;
 	rc = ParamRect(wnd, rcc);
-    clrc = AdjustRectangle(wnd, rc);
+    clrc = DfAdjustRectangle(wnd, rc);
 
-    if (wnd == inFocus)    {
-        lin  = FOCUS_LINE;
-        side = FOCUS_SIDE;
-        ne   = FOCUS_NE;
-        nw   = FOCUS_NW;
-        se   = SeCorner(wnd, FOCUS_SE);
-        sw   = FOCUS_SW;
+    if (wnd == DfInFocus)    {
+        lin  = DF_FOCUS_LINE;
+        side = DF_FOCUS_SIDE;
+        ne   = DF_FOCUS_NE;
+        nw   = DF_FOCUS_NW;
+        se   = DF_FOCUS_SE;
+        sw   = DF_FOCUS_SW;
     }
     else    {
-        lin  = LINE;
-        side = SIDE;
-        ne   = NE;
-        nw   = NW;
-        se   = SeCorner(wnd, SE);
-        sw   = SW;
+        lin  = DF_LINE;
+        side = DF_SIDE;
+        ne   = DF_NE;
+        nw   = DF_NW;
+        se   = DF_SE;
+        sw   = DF_SW;
     }
-    line[WindowWidth(wnd)] = '\0';
+    line[DfWindowWidth(wnd)] = '\0';
     /* ---------- window title ------------ */
-    if (TestAttribute(wnd, HASTITLEBAR))
-        if (RectTop(rc) == 0)
-            if (RectLeft(rc) < WindowWidth(wnd)-BorderAdj(wnd))
-                DisplayTitle(wnd, &rc);
-    foreground = FrameForeground(wnd);
-    background = FrameBackground(wnd);
+    if (DfTestAttribute(wnd, DF_HASTITLEBAR))
+        if (DfRectTop(rc) == 0)
+            if (DfRectLeft(rc) < DfWindowWidth(wnd)-DfBorderAdj(wnd))
+                DfDisplayTitle(wnd, &rc);
+    DfForeground = DfFrameForeground(wnd);
+    DfBackground = DfFrameBackground(wnd);
     /* -------- top frame corners --------- */
-    if (RectTop(rc) == 0)    {
-        if (RectLeft(rc) == 0)
-            wputch(wnd, nw, 0, 0);
-        if (RectLeft(rc) < WindowWidth(wnd))    {
-            if (RectRight(rc) >= WindowWidth(wnd)-1)
-                wputch(wnd, ne, WindowWidth(wnd)-1, 0);
+    if (DfRectTop(rc) == 0)    {
+        if (DfRectLeft(rc) == 0)
+            DfWPutch(wnd, nw, 0, 0);
+        if (DfRectLeft(rc) < DfWindowWidth(wnd))    {
+            if (DfRectRight(rc) >= DfWindowWidth(wnd)-1)
+                DfWPutch(wnd, ne, DfWindowWidth(wnd)-1, 0);
             TopLine(wnd, lin, clrc);
         }
     }
 
     /* ----------- window body ------------ */
-    for (y = RectTop(rc); y <= RectBottom(rc); y++)    {
-        int ch;
-        if (y == 0 || y >= WindowHeight(wnd)-1)
+    for (y = DfRectTop(rc); y <= DfRectBottom(rc); y++)    {
+        char ch;
+        if (y == 0 || y >= DfWindowHeight(wnd)-1)
             continue;
-        if (RectLeft(rc) == 0)
-            wputch(wnd, side, 0, y);
-        if (RectLeft(rc) < WindowWidth(wnd) &&
-                RectRight(rc) >= WindowWidth(wnd)-1)    {
-            if (TestAttribute(wnd, VSCROLLBAR))
-                ch = (    y == 1 ? UPSCROLLBOX      :
-                          y == WindowHeight(wnd)-2  ?
-                                DOWNSCROLLBOX       :
+        if (DfRectLeft(rc) == 0)
+            DfWPutch(wnd, side, 0, y);
+        if (DfRectLeft(rc) < DfWindowWidth(wnd) &&
+                DfRectRight(rc) >= DfWindowWidth(wnd)-1)    {
+            if (DfTestAttribute(wnd, DF_VSCROLLBAR))
+                ch = (    y == 1 ? DF_UPSCROLLBOX      :
+                          y == DfWindowHeight(wnd)-2  ?
+                                DF_DOWNSCROLLBOX       :
                           y-1 == wnd->VScrollBox    ?
-                                SCROLLBOXCHAR       :
-                          SCROLLBARCHAR );
+                                DF_SCROLLBOXCHAR       :
+                          DF_SCROLLBARCHAR );
             else
                 ch = side;
-            wputch(wnd, ch, WindowWidth(wnd)-1, y);
+            DfWPutch(wnd, ch, DfWindowWidth(wnd)-1, y);
         }
-        if (RectRight(rc) == WindowWidth(wnd))
+        if (DfRectRight(rc) == DfWindowWidth(wnd))
             shadow_char(wnd, y);
     }
 
-    if (RectTop(rc) <= WindowHeight(wnd)-1 &&
-            RectBottom(rc) >= WindowHeight(wnd)-1)    {
+    if (DfRectTop(rc) <= DfWindowHeight(wnd)-1 &&
+            DfRectBottom(rc) >= DfWindowHeight(wnd)-1)    {
         /* -------- bottom frame corners ---------- */
-        if (RectLeft(rc) == 0)
-            wputch(wnd, sw, 0, WindowHeight(wnd)-1);
-        if (RectLeft(rc) < WindowWidth(wnd) &&
-                RectRight(rc) >= WindowWidth(wnd)-1)
-            wputch(wnd, se, WindowWidth(wnd)-1,
-                WindowHeight(wnd)-1);
+        if (DfRectLeft(rc) == 0)
+            DfWPutch(wnd, sw, 0, DfWindowHeight(wnd)-1);
+        if (DfRectLeft(rc) < DfWindowWidth(wnd) &&
+                DfRectRight(rc) >= DfWindowWidth(wnd)-1)
+            DfWPutch(wnd, se, DfWindowWidth(wnd)-1,
+                DfWindowHeight(wnd)-1);
 
 
 		if (wnd->StatusBar == NULL)	{
         	/* ----------- bottom line ------------- */
-        	memset(line,lin,WindowWidth(wnd)-1);
-        	if (TestAttribute(wnd, HSCROLLBAR))    {
-            	line[0] = LEFTSCROLLBOX;
-            	line[WindowWidth(wnd)-3] = RIGHTSCROLLBOX;
-            	memset(line+1, SCROLLBARCHAR, WindowWidth(wnd)-4);
-            	line[wnd->HScrollBox] = SCROLLBOXCHAR;
+        	memset(line,lin,DfWindowWidth(wnd)-1);
+        	if (DfTestAttribute(wnd, DF_HSCROLLBAR))    {
+            	line[0] = DF_LEFTSCROLLBOX;
+            	line[DfWindowWidth(wnd)-3] = DF_RIGHTSCROLLBOX;
+            	memset(line+1, DF_SCROLLBARCHAR, DfWindowWidth(wnd)-4);
+            	line[wnd->HScrollBox] = DF_SCROLLBOXCHAR;
         	}
-        	line[WindowWidth(wnd)-2] = line[RectRight(rc)] = '\0';
-        	if (RectLeft(rc) != RectRight(rc) ||
-	        	(RectLeft(rc) && RectLeft(rc) < WindowWidth(wnd)-1))	{
-				if (wnd != inFocus)
-					ClipString++;
-            	writeline(wnd,
-                			line+(RectLeft(clrc)),
-                			RectLeft(clrc)+1,
-                			WindowHeight(wnd)-1,
+        	line[DfWindowWidth(wnd)-2] = line[DfRectRight(rc)] = '\0';
+        	if (DfRectLeft(rc) != DfRectRight(rc) ||
+		    (DfRectLeft(rc) && DfRectLeft(rc) < DfWindowWidth(wnd)-1))
+		{
+				if (wnd != DfInFocus)
+					DfClipString++;
+            	DfWriteLine(wnd,
+                			line+(DfRectLeft(clrc)),
+                			DfRectLeft(clrc)+1,
+                			DfWindowHeight(wnd)-1,
                 			FALSE);
-				ClipString = 0;
+				DfClipString = 0;
 			}
 		}
-        if (RectRight(rc) == WindowWidth(wnd))
-            shadow_char(wnd, WindowHeight(wnd)-1);
+        if (DfRectRight(rc) == DfWindowWidth(wnd))
+            shadow_char(wnd, DfWindowHeight(wnd)-1);
     }
-    if (RectBottom(rc) == WindowHeight(wnd))
+    if (DfRectBottom(rc) == DfWindowHeight(wnd))
         /* ---------- bottom shadow ------------- */
         shadowline(wnd, rc);
 }
 
-static void TopLine(WINDOW wnd, int lin, RECT rc)
+static void TopLine(DFWINDOW wnd, int lin, DFRECT rc)
 {
-    if (TestAttribute(wnd, HASMENUBAR))
+    if (DfTestAttribute(wnd, DF_HASMENUBAR))
         return;
-    if (TestAttribute(wnd, HASTITLEBAR) && GetTitle(wnd))
+    if (DfTestAttribute(wnd, DF_HASTITLEBAR) && DfGetTitle(wnd))
         return;
-	if (RectLeft(rc) == 0)	{
-		RectLeft(rc) += BorderAdj(wnd);
-		RectRight(rc) += BorderAdj(wnd);
+	if (DfRectLeft(rc) == 0)	{
+		DfRectLeft(rc) += DfBorderAdj(wnd);
+		DfRectRight(rc) += DfBorderAdj(wnd);
 	}
-	if (RectRight(rc) < WindowWidth(wnd)-1)
-		RectRight(rc)++;
+	if (DfRectRight(rc) < DfWindowWidth(wnd)-1)
+		DfRectRight(rc)++;
 
-    if (RectLeft(rc) < RectRight(rc))    {
+    if (DfRectLeft(rc) < DfRectRight(rc))    {
         /* ----------- top line ------------- */
-        memset(line,lin,WindowWidth(wnd)-1);
-		if (TestAttribute(wnd, CONTROLBOX))	{
+        memset(line,lin,DfWindowWidth(wnd)-1);
+		if (DfTestAttribute(wnd, DF_CONTROLBOX))	{
 			strncpy(line+1, "   ", 3);
-			*(line+2) = CONTROLBOXCHAR;
+			*(line+2) = DF_CONTROLBOXCHAR;
 		}
-        line[RectRight(rc)] = '\0';
-        writeline(wnd, line+RectLeft(rc),
-            RectLeft(rc), 0, FALSE);
+        line[DfRectRight(rc)] = '\0';
+        DfWriteLine(wnd, line+DfRectLeft(rc),
+            DfRectLeft(rc), 0, FALSE);
     }
 }
 
 /* ------ clear the data space of a window -------- */
-void ClearWindow(WINDOW wnd, RECT *rcc, int clrchar)
+void DfClearWindow(DFWINDOW wnd, DFRECT *rcc, int clrchar)
 {
-    if (isVisible(wnd))    {
+    if (DfIsVisible(wnd))    {
         int y;
-        RECT rc = rcc ? *rcc : RelativeWindowRect(wnd, WindowRect(wnd));
+        DFRECT rc;
 
-		int top = TopBorderAdj(wnd);
-		int bot = WindowHeight(wnd)-1-BottomBorderAdj(wnd);
+        if (rcc == NULL)
+            rc = DfRelativeWindowRect(wnd, DfWindowRect(wnd));
+        else
+            rc = *rcc;
 
-        if (RectLeft(rc) == 0)
-            RectLeft(rc) = BorderAdj(wnd);
-        if (RectRight(rc) > WindowWidth(wnd)-1)
-            RectRight(rc) = WindowWidth(wnd)-1;
-        SetStandardColor(wnd);
+        if (DfRectLeft(rc) == 0)
+            DfRectLeft(rc) = DfBorderAdj(wnd);
+        if (DfRectRight(rc) > DfWindowWidth(wnd)-1)
+            DfRectRight(rc) = DfWindowWidth(wnd)-1;
+        DfSetStandardColor(wnd);
         memset(line, clrchar, sizeof line);
-        line[RectRight(rc)+1] = '\0';
-        for (y = RectTop(rc); y <= RectBottom(rc); y++)    {
-            if (y < top || y > bot)
+        line[DfRectRight(rc)+1] = '\0';
+        for (y = DfRectTop(rc); y <= DfRectBottom(rc); y++)
+		{
+            if (y < DfTopBorderAdj(wnd) ||
+                    y > DfClientHeight(wnd)+
+						(DfTestAttribute(wnd, DF_HASMENUBAR) ? 1 : 0))
                 continue;
-            writeline(wnd,
-                line+(RectLeft(rc)),
-                RectLeft(rc),
+            DfWriteLine(wnd,
+                line+(DfRectLeft(rc)),
+                DfRectLeft(rc),
                 y,
                 FALSE);
         }
@@ -471,55 +459,63 @@ void ClearWindow(WINDOW wnd, RECT *rcc, int clrchar)
 }
 
 /* ------ compute the logical line length of a window ------ */
-int LineLength(char *ln)
+int DfLineLength(char *ln)
 {
     int len = strlen(ln);
     char *cp = ln;
-    while ((cp = strchr(cp, CHANGECOLOR)) != NULL)    {
+    while ((cp = strchr(cp, DF_CHANGECOLOR)) != NULL)
+    {
         cp++;
         len -= 3;
     }
     cp = ln;
-    while ((cp = strchr(cp, RESETCOLOR)) != NULL)    {
+    while ((cp = strchr(cp, DF_RESETCOLOR)) != NULL)
+    {
         cp++;
         --len;
     }
     return len;
 }
 
-void InitWindowColors(WINDOW wnd)
+void DfInitWindowColors(DFWINDOW wnd)
 {
 	int fbg,col;
-	int cls = GetClass(wnd);
+	int cls = DfGetClass(wnd);
 	/* window classes without assigned colors inherit parent's colors */
-	if (cfg.clr[cls][0][0] == 0xff && GetParent(wnd) != NULL)
-		cls = GetClass(GetParent(wnd));
+	if (DfCfg.clr[cls][0][0] == 0xff && DfGetParent(wnd) != NULL)
+		cls = DfGetClass(DfGetParent(wnd));
 	/* ---------- set the colors ---------- */
 	for (fbg = 0; fbg < 2; fbg++)
 		for (col = 0; col < 4; col++)
-			wnd->WindowColors[col][fbg] = cfg.clr[cls][col][fbg];
+			wnd->WindowColors[col][fbg] = DfCfg.clr[cls][col][fbg];
 }
 
-void PutWindowChar(WINDOW wnd, int c, int x, int y)
+void DfPutWindowChar(DFWINDOW wnd, char c, int x, int y)
 {
-	if (x < ClientWidth(wnd) && y < ClientHeight(wnd))
-		wputch(wnd, c, x+BorderAdj(wnd), y+TopBorderAdj(wnd));
+	if (x < DfClientWidth(wnd) && y < DfClientHeight(wnd))
+		DfWPutch(wnd, c, x+DfBorderAdj(wnd), y+DfTopBorderAdj(wnd));
 }
 
-void PutWindowLine(WINDOW wnd, void *s, int x, int y)
+void DfPutWindowLine(DFWINDOW wnd, void *s, int x, int y)
 {
-	int saved = FALSE, sv;
-	if (x < ClientWidth(wnd) && y < ClientHeight(wnd))	{
-		char *en = (char *)s+ClientWidth(wnd)-x;
-		if (strlen(s)+x > ClientWidth(wnd))	{
+	int saved = FALSE;
+	int sv = 0;
+
+	if (x < DfClientWidth(wnd) && y < DfClientHeight(wnd))
+	{
+		char *en = (char *)s+DfClientWidth(wnd)-x;
+		if ((int)(strlen(s)+x) > (int)DfClientWidth(wnd))
+		{
 			sv = *en;
 			*en = '\0';
 			saved = TRUE;
 		}
-		ClipString++;
-		wputs(wnd, s, x+BorderAdj(wnd), y+TopBorderAdj(wnd));
-		--ClipString;
+		DfClipString++;
+		DfWPuts(wnd, s, x+DfBorderAdj(wnd), y+DfTopBorderAdj(wnd));
+		--DfClipString;
 		if (saved)
 			*en = sv;
 	}
 }
+
+/* EOF */

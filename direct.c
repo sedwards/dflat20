@@ -1,38 +1,36 @@
 /* ---------- direct.c --------- */
 
+#include <direct.h>
+#include <io.h>
+
 #include "dflat.h"
 
-#ifndef BCPP
-#define FA_DIREC 0x10
-#endif
+#define DRIVE		1
+#define DIRECTORY	2
+#define FILENAME	4
+#define EXTENSION	8
 
-static char path[MAXPATH];
-static char drive[MAXDRIVE] = " :";
-static char dir[MAXDIR];
-static char name[MAXFILE];
-static char ext[MAXEXT];
+static char path[MAX_PATH];
+static char drive[_MAX_DRIVE] = " :";
+static char dir[_MAX_DIR];
+static char name[_MAX_FNAME];
+static char ext[_MAX_EXT];
 
 /* ----- Create unambiguous path from file spec, filling in the
      drive and directory if incomplete. Optionally change to
      the new drive and subdirectory ------ */
-void CreatePath(char *spath,char *fspec,int InclName,int Change)
+void DfCreatePath(char *path,char *fspec,int InclName,int Change)
 {
     int cm = 0;
-    unsigned currdrive;
-    char currdir[MAXPATH+1];
+    char currdir[MAX_PATH];
     char *cp;
 
-    if (!Change)    {
-        /* ---- save the current drive and subdirectory ---- */
-        currdrive = getdisk();
-        getcwd(currdir, sizeof currdir);
-        memmove(currdir, currdir+2, strlen(currdir+1));
-        cp = currdir+strlen(currdir)-1;
-        if (*cp == '\\')
-            *cp = '\0';
-    }
+	/* save the current directory */
+	if (!Change)
+		GetCurrentDirectory (MAX_PATH, currdir);
+
     *drive = *dir = *name = *ext = '\0';
-    fnsplit(fspec, drive, dir, name, ext);
+    _splitpath(fspec, drive, dir, name, ext);
     if (!InclName)
         *name = *ext = '\0';
     *drive = toupper(*drive);
@@ -45,12 +43,14 @@ void CreatePath(char *spath,char *fspec,int InclName,int Change)
     if (*drive)
         cm |= DRIVE;
     if (cm & DRIVE)
-        setdisk(*drive - 'A');
-    else     {
-        *drive = getdisk();
-        *drive += 'A';
+        _chdrive(*drive - '@');
+    else
+	{
+        *drive = _getdrive();
+        *drive += '@';
     }
-    if (cm & DIRECTORY)    {
+    if (cm & DIRECTORY)
+    {
         cp = dir+strlen(dir)-1;
         if (*cp == '\\')
             *cp = '\0';
@@ -68,128 +68,108 @@ void CreatePath(char *spath,char *fspec,int InclName,int Change)
         *name = *ext = '\0';
     if (dir[strlen(dir)-1] != '\\')
         strcat(dir, "\\");
-	if (spath != NULL)
-    	fnmerge(spath, drive, dir, name, ext);
-    if (!Change)    {
-        setdisk(currdrive);
-        chdir(currdir);
-    }
+    memset(path, 0, sizeof path);
+    _makepath(path, drive, dir, name, ext);
+
+	if (!Change)
+		SetCurrentDirectory (currdir);
 }
+
 
 static int dircmp(const void *c1, const void *c2)
 {
     return stricmp(*(char **)c1, *(char **)c2);
 }
 
-static BOOL BuildList(WINDOW wnd, char *fspec, BOOL dirs)
+
+BOOL DfDlgDirList(DFWINDOW wnd, char *fspec,
+                enum DfCommands nameid, enum DfCommands pathid,
+                unsigned attrib)
 {
-    int ax, i = 0, criterr = 1;
-    struct ffblk ff;
-    CTLWINDOW *ct = FindCommand(wnd->extension,
-							dirs ? ID_DIRECTORY : ID_FILES,LISTBOX);
-    WINDOW lwnd;
+    int ax, i = 0;
+    struct _finddata_t ff;
+    DF_CTLWINDOW *ct = DfFindCommand(wnd->extension,nameid,DF_LISTBOX);
+    DFWINDOW lwnd;
     char **dirlist = NULL;
 
-    if (ct != NULL)    {
-        lwnd = ct->wnd;
-        SendMessage(lwnd, CLEARTEXT, 0, 0);
+	DfCreatePath(path, fspec, TRUE, TRUE);
+	if (ct != NULL)
+	{
+		lwnd = ct->wnd;
+		DfSendMessage(ct->wnd, DFM_CLEARTEXT, 0, 0);
 
-       	while (criterr == 1)    {
-           	ax = findfirst(fspec, &ff, dirs ? FA_DIREC: 0);
-           	criterr = TestCriticalError();
-       	}
-       	if (criterr)
-           	return FALSE;
-        while (ax == 0)    {
-			if (!dirs || (ff.ff_attrib & FA_DIREC) && strcmp(ff.ff_name, "."))	{
-	            dirlist = DFrealloc(dirlist, sizeof(char *)*(i+1));
-    	        dirlist[i] = DFmalloc(strlen(ff.ff_name)+1);
-        	    strcpy(dirlist[i++], ff.ff_name);
+		if (attrib & 0x8000)
+		{
+			DWORD cd, dr;
+
+			cd = GetLogicalDrives ();
+			for (dr = 0; dr < 26; dr++)
+			{
+				if (cd & (1 << dr))
+				{
+					char drname[15];
+
+					sprintf(drname, "[%c:\\]", (char)(dr+'A'));
+#if 0
+                    /* ---- test for network or RAM disk ---- */
+                    regs.x.ax = 0x4409;     /* IOCTL func 9 */
+                    regs.h.bl = dr+1;
+                    int86(DOS, &regs, &regs);
+                    if (!regs.x.cflag)    {
+                        if (regs.x.dx & 0x1000)
+                            strcat(drname, " (Network)");
+                        else if (regs.x.dx == 0x0800)
+                            strcat(drname, " (RAMdisk)");
+                    }
+#endif
+					DfSendMessage(lwnd,DFM_ADDTEXT,(DF_PARAM)drname,0);
+				}
 			}
-            ax = findnext(&ff);
+			DfSendMessage(lwnd, DFM_PAINT, 0, 0);
+		}
+		ax = _findfirst(path, &ff);
+		if (ax == -1)
+			return FALSE;
+		do
+		{
+            if (!((attrib & 0x4000) &&
+                 (ff.attrib & (attrib & 0x3f)) == 0) &&
+                 strcmp(ff.name, "."))
+			{
+                char fname[MAX_PATH+2];
+                sprintf(fname, (ff.attrib & FILE_ATTRIBUTE_DIRECTORY) ?
+                                "[%s]" : "%s" , ff.name);
+                dirlist = DfRealloc(dirlist,
+                                    sizeof(char *)*(i+1));
+                dirlist[i] = DfMalloc(strlen(fname)+1);
+                if (dirlist[i] != NULL)
+                    strcpy(dirlist[i], fname);
+                i++;
+            }
         }
-        if (dirlist != NULL)    {
+		while (_findnext(ax, &ff) == 0);
+		_findclose(ax);
+        if (dirlist != NULL)
+		{
             int j;
-            /* -- sort file or directory list box data -- */
+            /* -- sort file/drive/directory list box data -- */
             qsort(dirlist, i, sizeof(void *), dircmp);
+
             /* ---- send sorted list to list box ---- */
             for (j = 0; j < i; j++)    {
-                SendMessage(lwnd,ADDTEXT,(PARAM)dirlist[j],0);
+                DfSendMessage(lwnd,DFM_ADDTEXT,(DF_PARAM)dirlist[j],0);
                 free(dirlist[j]);
             }
             free(dirlist);
-		}
-        SendMessage(lwnd, SHOW_WINDOW, 0, 0);
+        }
+        DfSendMessage(lwnd, DFM_SHOW_WINDOW, 0, 0);
     }
-	return TRUE;
+    if (pathid)
+	{
+        _makepath(path, drive, dir, NULL, NULL);
+        DfPutItemText(wnd, pathid, path);
+    }
+    return TRUE;
 }
 
-BOOL BuildFileList(WINDOW wnd, char *fspec)
-{
-	return BuildList(wnd, fspec, FALSE);
-}
-
-void BuildDirectoryList(WINDOW wnd)
-{
-	BuildList(wnd, "*.*", TRUE);
-}
-
-void BuildDriveList(WINDOW wnd)
-{
-    CTLWINDOW *ct = FindCommand(wnd->extension, ID_DRIVE,LISTBOX);
-    if (ct != NULL)    {
-	    union REGS regs;
-	    char drname[15];
-	    unsigned int cd, dr;
-	    WINDOW lwnd = ct->wnd;
-        SendMessage(lwnd, CLEARTEXT, 0, 0);
-
-    	cd = getdisk();
-    	for (dr = 0; dr < 26; dr++)    {
-        	unsigned ndr;
-        	setdisk(dr);
-        	ndr = getdisk();
-        	if (ndr == dr)    {
-            	/* ----- test for remapped B drive ----- */
-            	if (dr == 1)    {
-                	regs.x.ax = 0x440e; /* IOCTL func 14 */
-                	regs.h.bl = dr+1;
-                	int86(DOS, &regs, &regs);
-                	if (regs.h.al != 0)
-                    	continue;
-            	}
-
-            	sprintf(drname, "%c:", dr+'A');
-
-            	/* ---- test for network or RAM disk ---- */
-            	regs.x.ax = 0x4409;     /* IOCTL func 9 */
-            	regs.h.bl = dr+1;
-            	int86(DOS, &regs, &regs);
-            	if (!regs.x.cflag)    {
-                	if (regs.x.dx & 0x1000)
-                    	strcat(drname, " (Net)");
-                	else if (regs.x.dx == 0x0800)
-                    	strcat(drname, " (RAM)");
-            	}
-            	SendMessage(lwnd,ADDTEXT,(PARAM)drname,0);
-        	}
-    	}
-        SendMessage(lwnd, SHOW_WINDOW, 0, 0);
-    	setdisk(cd);
-	}
-}
-
-void BuildPathDisplay(WINDOW wnd)
-{
-    CTLWINDOW *ct = FindCommand(wnd->extension, ID_PATH,TEXT);
-	if (ct != NULL)	{
-		int len;
-	    WINDOW lwnd = ct->wnd;
-		CreatePath(path, "*.*", FALSE, FALSE);
-		len = strlen(path);
-		if (len > 3)
-			path[len-1] = '\0';
-       	SendMessage(lwnd,SETTEXT,(PARAM)path,0);
-        SendMessage(lwnd, PAINT, 0, 0);
-	}
-}
+/* EOF */

@@ -3,74 +3,110 @@
 #include "dflat.h"
 #include "htree.h"
 
-extern DBOX HelpBox;
+extern DF_DBOX HelpBox;
 
 /* -------- strings of D-Flat classes for calling default
       help text collections -------- */
-char *ClassNames[] = {
-    #undef ClassDef
-    #define ClassDef(c,b,p,a) #c,
+char *DfClassNames[] = {
+    #undef DfClassDef
+    #define DfClassDef(c,b,p,a) #c,
     #include "classes.h"
     NULL
 };
 
-#define MAXHEIGHT (SCREENHEIGHT-10)
-#define MAXHELPKEYWORDS 50  /* --- maximum keywords in a window --- */
-#define MAXHELPSTACK 100
+#define MAXHEIGHT (DfGetScreenHeight()-10)
 
+/* --------- linked list of help text collections -------- */
+struct helps {
+    char *hname;
+    char *NextName;
+    char *PrevName;
+    long hptr;
+    int bit;
+    int hheight;
+    int hwidth;
+    DFWINDOW hwnd;
+    struct helps *NextHelp;
+};
 static struct helps *FirstHelp;
+static struct helps *LastHelp;
 static struct helps *ThisHelp;
-static int HelpCount;
-static char HelpFileName[9];
 
-static int HelpStack[MAXHELPSTACK];
-static int stacked;
+/* --- linked stack of help windows that have beed used --- */
+struct HelpStack {
+    char *hname;
+    struct HelpStack *PrevStack;
+};
+static struct HelpStack *LastStack;
+static struct HelpStack *ThisStack;
 
-/* --- keywords in the current help text -------- */
-static struct keywords {
-	struct helps *hkey;
+/* --- linked list of keywords in the current help
+           text collection (listhead is in window) -------- */
+struct keywords {
+    char *hname;
     int lineno;
     int off1, off2, off3;
-    char isDefinition;
-} KeyWords[MAXHELPKEYWORDS];
-static struct keywords *thisword;
-static int keywordcount;
+    int isDefinition;
+    struct keywords *nextword;
+    struct keywords *prevword;
+};
 
 static FILE *helpfp;
 static char hline [160];
 static BOOL Helping;
 
-static void SelectHelp(WINDOW, struct helps *, BOOL);
-static void ReadHelp(WINDOW);
-static struct helps *FindHelp(char *);
-static void DisplayDefinition(WINDOW, char *);
-static void BestFit(WINDOW, DIALOGWINDOW *);
+static void SelectHelp(DFWINDOW, char *);
+static void ReadHelp(DFWINDOW);
+static void FindHelp(char *);
+static void FindHelpWindow(DFWINDOW);
+static void DisplayDefinition(DFWINDOW, char *);
+static void BestFit(DFWINDOW, DF_DIALOGWINDOW *);
 
-/* ------------- CREATE_WINDOW message ------------ */
-static void CreateWindowMsg(WINDOW wnd)
+/* ------------- DFM_CREATE_WINDOW message ------------ */
+static void CreateWindowMsg(DFWINDOW wnd)
 {
     Helping = TRUE;
-    GetClass(wnd) = HELPBOX;
-    InitWindowColors(wnd);
+    DfGetClass(wnd) = DF_HELPBOX;
+    DfInitWindowColors(wnd);
     if (ThisHelp != NULL)
         ThisHelp->hwnd = wnd;
 }
 
 /* ------------- COMMAND message ------------ */
-static BOOL CommandMsg(WINDOW wnd, PARAM p1)
+static BOOL CommandMsg(DFWINDOW wnd, DF_PARAM p1)
 {
     switch ((int)p1)    {
-        case ID_PREV:
-            if (ThisHelp  != NULL)
-                SelectHelp(wnd, FirstHelp+(ThisHelp->prevhlp), TRUE);
-            return TRUE;
-        case ID_NEXT:
+        case DF_ID_CANCEL:
+            ThisStack = LastStack;
+            while (ThisStack != NULL)    {
+                LastStack = ThisStack->PrevStack;
+                if (ThisStack->hname != NULL)
+                    free(ThisStack->hname);
+                free(ThisStack);
+                ThisStack = LastStack;
+            }
+            break;
+        case DF_ID_PREV:
+            FindHelpWindow(wnd);
             if (ThisHelp != NULL)
-                SelectHelp(wnd, FirstHelp+(ThisHelp->nexthlp), TRUE);
+                SelectHelp(wnd, ThisHelp->PrevName);
             return TRUE;
-        case ID_BACK:
-			if (stacked)
-				SelectHelp(wnd, FirstHelp+HelpStack[--stacked], FALSE);
+        case DF_ID_NEXT:
+            FindHelpWindow(wnd);
+            if (ThisHelp != NULL)
+                SelectHelp(wnd, ThisHelp->NextName);
+            return TRUE;
+        case DF_ID_BACK:
+            if (LastStack != NULL)    {
+                if (LastStack->PrevStack != NULL)    {
+                    ThisStack = LastStack->PrevStack;
+                    if (LastStack->hname != NULL)
+                        free(LastStack->hname);
+                    free(LastStack);
+                    LastStack = ThisStack;
+                    SelectHelp(wnd, ThisStack->hname);
+                }
+            }
             return TRUE;
         default:
             break;
@@ -78,79 +114,104 @@ static BOOL CommandMsg(WINDOW wnd, PARAM p1)
     return FALSE;
 }
 
-/* ------------- KEYBOARD message ------------ */
-static BOOL KeyboardMsg(WINDOW wnd, PARAM p1)
+/* ------------- DFM_KEYBOARD message ------------ */
+static BOOL KeyboardMsg(DFWINDOW wnd, DF_PARAM p1)
 {
-    WINDOW cwnd;
+    DFWINDOW cwnd;
+    struct keywords *thisword;
+    static char HelpName[50];
 
-    cwnd = ControlWindow(wnd->extension, ID_HELPTEXT);
-    if (cwnd == NULL || inFocus != cwnd)
+    cwnd = DfControlWindow(wnd->extension, DF_ID_HELPTEXT);
+    if (cwnd == NULL || DfInFocus != cwnd)
         return FALSE;
+    thisword = cwnd->thisword;
     switch ((int)p1)    {
         case '\r':
-			if (keywordcount)
-	            if (thisword != NULL)    {
-					char *hp = thisword->hkey->hname;
-        	        if (thisword->isDefinition)
-            	        DisplayDefinition(GetParent(wnd), hp);
-                	else
-                    	SelectHelp(wnd, thisword->hkey, TRUE);
-	            }
+            if (thisword != NULL)    {
+                if (thisword->isDefinition)
+                    DisplayDefinition(DfGetParent(wnd),
+                                        thisword->hname);
+                else    {
+                    strncpy(HelpName, thisword->hname,
+                        sizeof HelpName);
+                    SelectHelp(wnd, HelpName);
+                }
+            }
             return TRUE;
         case '\t':
-			if (!keywordcount)
-				return TRUE;
-            if (thisword == NULL ||
-					++thisword == KeyWords+keywordcount)
-	            thisword = KeyWords;
+            if (thisword == NULL)
+                thisword = cwnd->firstword;
+            else {
+                if (thisword->nextword == NULL)
+                    thisword = cwnd->firstword;
+                else
+                    thisword = thisword->nextword;
+            }
             break;
-        case SHIFT_HT:
-			if (!keywordcount)
-				return TRUE;
-			if (thisword == NULL || thisword == KeyWords)
-				thisword = KeyWords+keywordcount;
-			--thisword;
-			break;;
+        case DF_SHIFT_HT:
+            if (thisword == NULL)
+                thisword = cwnd->lastword;
+            else {
+                if (thisword->prevword == NULL)
+                    thisword = cwnd->lastword;
+                else
+                    thisword = thisword->prevword;
+            }
+            break;
         default:
-			return FALSE;
+            thisword = NULL;
+            break;
     }
-    if (thisword->lineno < cwnd->wtop ||
-            thisword->lineno >=
-                cwnd->wtop + ClientHeight(cwnd))  {
-        int distance = ClientHeight(cwnd)/2;
-        do    {
-            cwnd->wtop = thisword->lineno-distance;
-            distance /= 2;
+    if (thisword != NULL)    {
+        cwnd->thisword = thisword;
+        if (thisword->lineno < cwnd->wtop ||
+                thisword->lineno >=
+                    cwnd->wtop + DfClientHeight(cwnd))  {
+            int distance = DfClientHeight(cwnd)/2;
+            do    {
+                cwnd->wtop = thisword->lineno-distance;
+                distance /= 2;
+            }
+            while (cwnd->wtop < 0);
         }
-        while (cwnd->wtop < 0);
+        DfSendMessage(cwnd, DFM_PAINT, 0, 0);
+        return TRUE;
     }
-    SendMessage(cwnd, PAINT, 0, 0);
-    return TRUE;
+    return FALSE;
 }
 
-/* ---- window processing module for the HELPBOX ------- */
-int HelpBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
+/* ---- window processing module for the DF_HELPBOX ------- */
+int DfHelpBoxProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 {
+    DF_DBOX *db = wnd->extension;
+
     switch (msg)    {
-        case CREATE_WINDOW:
+        case DFM_CREATE_WINDOW:
             CreateWindowMsg(wnd);
             break;
-        case INITIATE_DIALOG:
+        case DFM_INITIATE_DIALOG:
             ReadHelp(wnd);
             break;
-        case COMMAND:
+        case DFM_COMMAND:
             if (p2 != 0)
                 break;
             if (CommandMsg(wnd, p1))
                 return TRUE;
             break;
-        case KEYBOARD:
-            if (WindowMoving)
+        case DFM_KEYBOARD:
+            if (DfWindowMoving)
                 break;
             if (KeyboardMsg(wnd, p1))
                 return TRUE;
             break;
-        case CLOSE_WINDOW:
+        case DFM_CLOSE_WINDOW:
+            if (db != NULL)    {
+                if (db->dwnd.title != NULL)    {
+                    free(db->dwnd.title);
+                    db->dwnd.title = NULL;
+                }
+            }
+            FindHelpWindow(wnd);
             if (ThisHelp != NULL)
                 ThisHelp->hwnd = NULL;
             Helping = FALSE;
@@ -158,98 +219,116 @@ int HelpBoxProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
         default:
             break;
     }
-    return BaseWndProc(HELPBOX, wnd, msg, p1, p2);
+    return DfBaseWndProc(DF_HELPBOX, wnd, msg, p1, p2);
 }
 
-/* ---- PAINT message for the helpbox text editbox ---- */
-static int PaintMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ----- select a new help window from its name ----- */
+static void SelectHelp(DFWINDOW wnd, char *hname)
 {
+    if (hname != NULL)    {
+        DFWINDOW pwnd = DfGetParent(wnd);
+        DfPostMessage(wnd, DFM_ENDDIALOG, 0, 0);
+        DfPostMessage(pwnd, DFM_DISPLAY_HELP, (DF_PARAM) hname, 0);
+    }
+}
+
+/* ---- DFM_PAINT message for the helpbox text editbox ---- */
+static int PaintMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+{
+    struct keywords *thisword;
     int rtn;
-    if (thisword != NULL)    {
-        WINDOW pwnd = GetParent(wnd);
+    if (wnd->thisword != NULL)    {
+        DFWINDOW pwnd = DfGetParent(wnd);
         char *cp;
-        cp = TextLine(wnd, thisword->lineno);
+        thisword = wnd->thisword;
+        cp = DfTextLine(wnd, thisword->lineno);
         cp += thisword->off1;
         *(cp+1) =
-            (pwnd->WindowColors[SELECT_COLOR][FG] & 255) | 0x80;
+            (pwnd->WindowColors[DF_SELECT_COLOR][DF_FG] & 255) | 0x80;
         *(cp+2) =
-            (pwnd->WindowColors[SELECT_COLOR][BG] & 255) | 0x80;
-        rtn = DefaultWndProc(wnd, PAINT, p1, p2);
+            (pwnd->WindowColors[DF_SELECT_COLOR][DF_BG] & 255) | 0x80;
+        rtn = DfDefaultWndProc(wnd, DFM_PAINT, p1, p2);
         *(cp+1) =
-            (pwnd->WindowColors[HILITE_COLOR][FG] & 255) | 0x80;
+            (pwnd->WindowColors[DF_HILITE_COLOR][DF_FG] & 255) | 0x80;
         *(cp+2) =
-            (pwnd->WindowColors[HILITE_COLOR][BG] & 255) | 0x80;
+            (pwnd->WindowColors[DF_HILITE_COLOR][DF_BG] & 255) | 0x80;
         return rtn;
     }
-    return DefaultWndProc(wnd, PAINT, p1, p2);
+    return DfDefaultWndProc(wnd, DFM_PAINT, p1, p2);
 }
 
-/* ---- LEFT_BUTTON message for the helpbox text editbox ---- */
-static int LeftButtonMsg(WINDOW wnd, PARAM p1, PARAM p2)
+/* ---- DFM_LEFT_BUTTON message for the helpbox text editbox ---- */
+static int LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 {
-    int rtn, mx, my, i;
+    struct keywords *thisword;
+    int rtn, mx, my;
 
-    rtn = DefaultWndProc(wnd, LEFT_BUTTON, p1, p2);
-    mx = (int)p1 - GetClientLeft(wnd);
-    my = (int)p2 - GetClientTop(wnd);
+    rtn = DfDefaultWndProc(wnd, DFM_LEFT_BUTTON, p1, p2);
+    mx = (int)p1 - DfGetClientLeft(wnd);
+    my = (int)p2 - DfGetClientTop(wnd);
     my += wnd->wtop;
-    thisword = KeyWords;
-    for (i = 0; i < keywordcount; i++)    {
+    thisword = wnd->firstword;
+    while (thisword != NULL)    {
         if (my == thisword->lineno)    {
             if (mx >= thisword->off2 &&
                         mx < thisword->off3)    {
-                SendMessage(wnd, PAINT, 0, 0);
+                wnd->thisword = thisword;
+                DfSendMessage(wnd, DFM_PAINT, 0, 0);
                 if (thisword->isDefinition)    {
-                    WINDOW pwnd = GetParent(wnd);
+                    DFWINDOW pwnd = DfGetParent(wnd);
                     if (pwnd != NULL)
-                        DisplayDefinition(GetParent(pwnd),
-                            thisword->hkey->hname);
+                        DisplayDefinition(DfGetParent(pwnd),
+                            thisword->hname);
                 }
                 break;
             }
         }
-        thisword++;
+        thisword = thisword->nextword;
     }
-	if (i == keywordcount)
-		thisword = NULL;
     return rtn;
 }
 
-/* --- window processing module for HELPBOX's text EDITBOX -- */
-int HelpTextProc(WINDOW wnd, MESSAGE msg, PARAM p1, PARAM p2)
+/* --- window processing module for DF_HELPBOX's text DF_EDITBOX -- */
+int HelpTextProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 {
+    struct keywords *thisword;
     switch (msg)    {
-		case KEYBOARD:
-			break;
-        case PAINT:
+        case DFM_PAINT:
             return PaintMsg(wnd, p1, p2);
-        case LEFT_BUTTON:
+        case DFM_LEFT_BUTTON:
             return LeftButtonMsg(wnd, p1, p2);
         case DOUBLE_CLICK:
-            PostMessage(wnd, KEYBOARD, '\r', 0);
+            DfPostMessage(wnd, DFM_KEYBOARD, '\r', 0);
+            break;
+        case DFM_CLOSE_WINDOW:
+            thisword = wnd->firstword;
+            while (thisword != NULL)    {
+                struct keywords *nextword = thisword->nextword;
+                if (thisword->hname != NULL)
+                    free(thisword->hname);
+                free(thisword);
+                thisword = nextword;
+            }
             break;
         default:
             break;
     }
-    return DefaultWndProc(wnd, msg, p1, p2);
+    return DfDefaultWndProc(wnd, msg, p1, p2);
 }
 
 /* -------- read the help text into the editbox ------- */
-static void ReadHelp(WINDOW wnd)
+static void ReadHelp(DFWINDOW wnd)
 {
-    WINDOW cwnd = ControlWindow(wnd->extension, ID_HELPTEXT);
+    DFWINDOW cwnd = DfControlWindow(wnd->extension, DF_ID_HELPTEXT);
     int linectr = 0;
     if (cwnd == NULL)
         return;
-    thisword = KeyWords;
-	keywordcount = 0;
     cwnd->wndproc = HelpTextProc;
-	SendMessage(cwnd, CLEARTEXT, 0, 0);
     /* ----- read the help text ------- */
     while (TRUE)    {
         unsigned char *cp = hline, *cp1;
         int colorct = 0;
-        if (GetHelpLine(hline) == NULL)
+        if (DfGetHelpLine(hline) == NULL)
             break;
         if (*hline == '<')
             break;
@@ -258,57 +337,58 @@ static void ReadHelp(WINDOW wnd)
         while (cp != NULL)    {
             if ((cp = strchr(cp, '[')) != NULL)    {
                 /* ----- hit a new key word ----- */
+                struct keywords *thisword;
                 if (*(cp+1) != '.' && *(cp+1) != '*')    {
                     cp++;
                     continue;
                 }
+                thisword = DfCalloc(1, sizeof(struct keywords));
+                if (cwnd->firstword == NULL)
+                    cwnd->firstword = thisword;
+                if (cwnd->lastword != NULL)    {
+                    ((struct keywords *)
+                        (cwnd->lastword))->nextword = thisword;
+                    thisword->prevword = cwnd->lastword;
+                }
+                cwnd->lastword = thisword;
                 thisword->lineno = cwnd->wlines;
-                thisword->off1 = (int) (cp - hline);
+                thisword->off1 = (int) ((int)cp - (int)hline);
                 thisword->off2 = thisword->off1 - colorct * 4;
                 thisword->isDefinition = *(cp+1) == '*';
                 colorct++;
-                *cp++ = CHANGECOLOR;
+                *cp++ = DF_CHANGECOLOR;
                 *cp++ =
-            (wnd->WindowColors [HILITE_COLOR] [FG] & 255) | 0x80;
+            (wnd->WindowColors [DF_HILITE_COLOR] [DF_FG] & 255) | 0x80;
                 *cp++ =
-            (wnd->WindowColors [HILITE_COLOR] [BG] & 255) | 0x80;
+            (wnd->WindowColors [DF_HILITE_COLOR] [DF_BG] & 255) | 0x80;
                 cp1 = cp;
                 if ((cp = strchr(cp, ']')) != NULL)    {
                     if (thisword != NULL)
                         thisword->off3 =
                             thisword->off2 + (int) (cp - cp1);
-                    *cp++ = RESETCOLOR;
+                    *cp++ = DF_RESETCOLOR;
                 }
                 if ((cp = strchr(cp, '<')) != NULL)    {
                     char *cp1 = strchr(cp, '>');
                     if (cp1 != NULL)    {
-						char hname[80];
-                        int len = (int) (cp1 - cp);
-						memset(hname, 0, 80);
-                        strncpy(hname, cp+1, len-1);
-						thisword->hkey = FindHelp(hname);
+                        int len = (int) ((int)cp1 - (int)cp);
+                        thisword->hname = DfCalloc(1, len);
+                        strncpy(thisword->hname, cp+1, len-1);
                         memmove(cp, cp1+1, strlen(cp1));
                     }
                 }
-				thisword++;
-				keywordcount++;
             }
         }
-        PutItemText(wnd, ID_HELPTEXT, hline);
+        DfPutItemText(wnd, DF_ID_HELPTEXT, hline);
         /* -- display help text as soon as window is full -- */
-        if (++linectr == ClientHeight(cwnd))	{
-			struct keywords *holdthis = thisword;
-		    thisword = NULL;
-            SendMessage(cwnd, PAINT, 0, 0);
-		    thisword = holdthis;
-		}
-        if (linectr > ClientHeight(cwnd) &&
-                !TestAttribute(cwnd, VSCROLLBAR))    {
-            AddAttribute(cwnd, VSCROLLBAR);
-            SendMessage(cwnd, BORDER, 0, 0);
+        if (++linectr == DfClientHeight(cwnd))
+            DfSendMessage(cwnd, DFM_PAINT, 0, 0);
+        if (linectr > DfClientHeight(cwnd) &&
+                !DfTestAttribute(cwnd, DF_VSCROLLBAR))    {
+            DfAddAttribute(cwnd, DF_VSCROLLBAR);
+            DfSendMessage(cwnd, DFM_BORDER, 0, 0);
         }
     }
-    thisword = NULL;
 }
 
 /* ---- compute the displayed length of a help text line --- */
@@ -331,173 +411,180 @@ static int HelpLength(char *s)
 }
 
 /* ----------- load the help text file ------------ */
-void LoadHelpFile(char *fname)
+void DfLoadHelpFile()
 {
-	long where;
-	int i;
+    char *cp;
+
     if (Helping)
         return;
-    UnLoadHelpFile();
-    if ((helpfp = OpenHelpFile(fname, "rb")) == NULL)
+    DfUnLoadHelpFile();
+    if ((helpfp = DfOpenHelpFile()) == NULL)
         return;
-	strcpy(HelpFileName, fname);
-	fseek(helpfp, - (long) sizeof(long), SEEK_END);
-	fread(&where, sizeof(long), 1, helpfp);
-	fseek(helpfp, where, SEEK_SET);
-	fread(&HelpCount, sizeof(int), 1, helpfp);
-	FirstHelp = DFcalloc(sizeof(struct helps) * HelpCount, 1);
-	for (i = 0; i < HelpCount; i++)	{
-		int len;
-		fread(&len, sizeof(int), 1, helpfp);
-		if (len)	{
-			(FirstHelp+i)->hname = DFcalloc(len+1, 1);
-			fread((FirstHelp+i)->hname, len+1, 1, helpfp);
-		}
-		fread(&len, sizeof(int), 1, helpfp);
-		if (len)	{
-			(FirstHelp+i)->comment = DFcalloc(len+1, 1);
-			fread((FirstHelp+i)->comment, len+1, 1, helpfp);
-		}
-		fread(&(FirstHelp+i)->hptr, sizeof(int)*5+sizeof(long), 1, helpfp);
-	}
+    *hline = '\0';
+    while (*hline != '<')    {
+        if (DfGetHelpLine(hline) == NULL)    {
+            fclose(helpfp);
+            return;
+        }
+    }
+    while (*hline == '<')   {
+        if (strncmp(hline, "<end>", 5) == 0)
+            break;
+
+        /* -------- parse the help window's text name ----- */
+        if ((cp = strchr(hline, '>')) != NULL)    {
+            ThisHelp = DfCalloc(1, sizeof(struct helps));
+            if (FirstHelp == NULL)
+            FirstHelp = ThisHelp;
+            *cp = '\0';
+            ThisHelp->hname=DfMalloc(strlen(hline+1)+1);
+            strcpy(ThisHelp->hname, hline+1);
+
+            DfHelpFilePosition(&ThisHelp->hptr, &ThisHelp->bit);
+
+            if (DfGetHelpLine(hline) == NULL)
+                break;
+
+            /* ------- build the help linked list entry --- */
+            while (*hline == '[')    {
+                DfHelpFilePosition(&ThisHelp->hptr,
+                                            &ThisHelp->bit);
+                /* ---- parse the <<prev button pointer ---- */
+                if (strncmp(hline, "[<<]", 4) == 0)    {
+                    char *cp = strchr(hline+4, '<');
+                    if (cp != NULL)    {
+                        char *cp1 = strchr(cp, '>');
+                        if (cp1 != NULL)    {
+                            int len = (int) (cp1-cp);
+                            ThisHelp->PrevName=DfCalloc(1,len);
+                            strncpy(ThisHelp->PrevName,
+                                cp+1,len-1);
+                        }
+                    }
+                    if (DfGetHelpLine(hline) == NULL)
+                        break;
+                    continue;
+                }
+                /* ---- parse the next>> button pointer ---- */
+                else if (strncmp(hline, "[>>]", 4) == 0)    {
+                    char *cp = strchr(hline+4, '<');
+                    if (cp != NULL)    {
+                        char *cp1 = strchr(cp, '>');
+                        if (cp1 != NULL)    {
+                            int len = (int) (cp1-cp);
+                            ThisHelp->NextName=DfCalloc(1,len);
+                            strncpy(ThisHelp->NextName,
+                                            cp+1,len-1);
+                        }
+                    }
+                    if (DfGetHelpLine(hline) == NULL)
+                        break;
+                    continue;
+                }
+                else
+                    break;
+            }
+            ThisHelp->hheight = 0;
+            ThisHelp->hwidth = 0;
+            ThisHelp->NextHelp = NULL;
+
+            /* ------ append entry to the linked list ------ */
+            if (LastHelp != NULL)
+                LastHelp->NextHelp = ThisHelp;
+            LastHelp = ThisHelp;
+        }
+        /* -------- move to the next <helpname> token ------ */
+        if (DfGetHelpLine(hline) == NULL)
+            strcpy(hline, "<end>");
+        while (*hline != '<')    {
+            ThisHelp->hwidth =
+                max(ThisHelp->hwidth, HelpLength(hline));
+            ThisHelp->hheight++;
+            if (DfGetHelpLine(hline) == NULL)
+                strcpy(hline, "<end>");
+        }
+    }
     fclose(helpfp);
-	helpfp = NULL;
 }
 
 /* ------ free the memory used by the help file table ------ */
-void UnLoadHelpFile(void)
+void DfUnLoadHelpFile(void)
 {
-	int i;
-	for (i = 0; i < HelpCount; i++)	{
-        free((FirstHelp+i)->comment);
-        free((FirstHelp+i)->hname);
-	}
-	free(FirstHelp);
-	FirstHelp = NULL;
-    free(HelpTree);
-	HelpTree = NULL;
+    while (FirstHelp != NULL)    {
+        ThisHelp = FirstHelp;
+        if (ThisHelp->hname != NULL)
+            free(ThisHelp->hname);
+        if (ThisHelp->PrevName != NULL)
+            free(ThisHelp->PrevName);
+        if (ThisHelp->NextName != NULL)
+            free(ThisHelp->NextName);
+        FirstHelp = ThisHelp->NextHelp;
+        free(ThisHelp);
+    }
+    ThisHelp = LastHelp = NULL;
+    free(DfHelpTree);
+	DfHelpTree = NULL;
 }
 
-static void BuildHelpBox(WINDOW wnd)
+/* ---------- display a specified help text ----------- */
+BOOL DfDisplayHelp(DFWINDOW wnd, char *Help)
 {
-    int offset, i;
-
-    /* -- seek to the first line of the help text -- */
-    SeekHelpLine(ThisHelp->hptr, ThisHelp->bit);
-    /* ----- read the title ----- */
-    GetHelpLine(hline);
-    hline[strlen(hline)-1] = '\0';
-	free(HelpBox.dwnd.title);
-    HelpBox.dwnd.title = DFmalloc(strlen(hline)+1);
-    strcpy(HelpBox.dwnd.title, hline);
-    /* ----- set the height and width ----- */
-    HelpBox.dwnd.h = min(ThisHelp->hheight, MAXHEIGHT)+7;
-    HelpBox.dwnd.w = max(45, ThisHelp->hwidth+6);
-    /* ------ position the help window ----- */
-	if (wnd != NULL)
-	    BestFit(wnd, &HelpBox.dwnd);
-    /* ------- position the command buttons ------ */
-    HelpBox.ctl[0].dwnd.w = max(40, ThisHelp->hwidth+2);
-    HelpBox.ctl[0].dwnd.h =
-                min(ThisHelp->hheight, MAXHEIGHT)+2;
-    offset = (HelpBox.dwnd.w-40) / 2;
-	for (i = 1; i < 5; i++)    {
-   		HelpBox.ctl[i].dwnd.y =
-           		min(ThisHelp->hheight, MAXHEIGHT)+3;
-   		HelpBox.ctl[i].dwnd.x = (i-1) * 10 + offset;
-	}
-    /* ---- disable ineffective buttons ---- */
-    if (ThisHelp->nexthlp == -1)
-        DisableButton(&HelpBox, ID_NEXT);
-	else
-        EnableButton(&HelpBox, ID_NEXT);
-    if (ThisHelp->prevhlp == -1)
-        DisableButton(&HelpBox, ID_PREV);
-	else 
-        EnableButton(&HelpBox, ID_PREV);
-}
-
-/* ----- select a new help window from its name ----- */
-static void SelectHelp(WINDOW wnd, struct helps *newhelp, BOOL recall)
-{
-	if (newhelp != NULL)	{
-		int i, x, y;
-		SendMessage(wnd, HIDE_WINDOW, 0, 0);
-		if (recall && stacked < MAXHELPSTACK)
-			HelpStack[stacked++] = ThisHelp-FirstHelp;
-		ThisHelp = newhelp;
-		SendMessage(GetParent(wnd), DISPLAY_HELP, (PARAM) ThisHelp->hname, 0);
-		if (stacked)
-		    EnableButton(&HelpBox, ID_BACK);
-		else 
-		    DisableButton(&HelpBox, ID_BACK);
-		BuildHelpBox(NULL);
-		AddTitle(wnd, HelpBox.dwnd.title);
-		/* --- reposition and resize the help window --- */
-		HelpBox.dwnd.x = (SCREENWIDTH-HelpBox.dwnd.w)/2;
-		HelpBox.dwnd.y = (SCREENHEIGHT-HelpBox.dwnd.h)/2;
-		SendMessage(wnd, MOVE, HelpBox.dwnd.x, HelpBox.dwnd.y);
-		SendMessage(wnd, SIZE,
-						HelpBox.dwnd.x + HelpBox.dwnd.w - 1,
-						HelpBox.dwnd.y + HelpBox.dwnd.h - 1);
-		/* --- reposition the controls --- */
-	    for (i = 0; i < 5; i++)    {
-			WINDOW cwnd = HelpBox.ctl[i].wnd;
-			x = HelpBox.ctl[i].dwnd.x+GetClientLeft(wnd);
-			y = HelpBox.ctl[i].dwnd.y+GetClientTop(wnd);
-			SendMessage(cwnd, MOVE, x, y);
-			if (i == 0)	{
-				x += HelpBox.ctl[i].dwnd.w - 1;
-				y += HelpBox.ctl[i].dwnd.h - 1;
-				SendMessage(cwnd, SIZE, x, y);
-			}
-		}
-		/* --- read the help text into the help window --- */
-		ReadHelp(wnd);
-		ReFocus(wnd);
-		SendMessage(wnd, SHOW_WINDOW, 0, 0);
-	}
-}
-/* ---- strip tildes from the help name ---- */
-static void StripTildes(char *fh, char *hp)
-{
-	while (*hp)	{
-		if (*hp != '~')
-			*fh++ = *hp;
-		hp++;
-	}
-	*fh = '\0';
-}
-/* --- return the comment associated with a help window --- */
-char *HelpComment(char *Help)
-{
-	char FixedHelp[30];
-	StripTildes(FixedHelp, Help);
-    if ((ThisHelp = FindHelp(FixedHelp)) != NULL)
-		return ThisHelp->comment;
-	return NULL;
-}
-/* ---------- display help text ----------- */
-BOOL DisplayHelp(WINDOW wnd, char *Help)
-{
-	char FixedHelp[30];
 	BOOL rtn = FALSE;
-
     if (Helping)
         return TRUE;
-	StripTildes(FixedHelp, Help);
-	stacked = 0;
 	wnd->isHelping++;
-    if ((ThisHelp = FindHelp(FixedHelp)) != NULL)	{
-        if ((helpfp = OpenHelpFile(HelpFileName, "rb")) != NULL)    {
-			BuildHelpBox(wnd);
-		    DisableButton(&HelpBox, ID_BACK);
+    FindHelp(Help);
+    if (ThisHelp != NULL)    {
+        if (LastStack == NULL ||
+                stricmp(Help, LastStack->hname))    {
+            /* ---- add the window to the history stack ---- */
+            ThisStack = DfCalloc(1,sizeof(struct HelpStack));
+            ThisStack->hname = DfMalloc(strlen(Help)+1);
+            if (ThisStack->hname != NULL)
+                strcpy(ThisStack->hname, Help);
+            ThisStack->PrevStack = LastStack;
+            LastStack = ThisStack;
+        }
+        if ((helpfp = DfOpenHelpFile()) != NULL)    {
+            DF_DBOX *db;
+            int offset, i;
+
+            db = DfCalloc(1,sizeof HelpBox);
+            memcpy(db, &HelpBox, sizeof HelpBox);
+            /* -- seek to the first line of the help text -- */
+            DfSeekHelpLine(ThisHelp->hptr, ThisHelp->bit);
+            /* ----- read the title ----- */
+            DfGetHelpLine(hline);
+            hline[strlen(hline)-1] = '\0';
+            db->dwnd.title = DfMalloc(strlen(hline)+1);
+            strcpy(db->dwnd.title, hline);
+            /* ----- set the height and width ----- */
+            db->dwnd.h = min(ThisHelp->hheight, MAXHEIGHT)+7;
+            db->dwnd.w = max(45, ThisHelp->hwidth+6);
+            /* ------ position the help window ----- */
+            BestFit(wnd, &db->dwnd);
+            /* ------- position the command buttons ------ */
+            db->ctl[0].dwnd.w = max(40, ThisHelp->hwidth+2);
+            db->ctl[0].dwnd.h =
+                        min(ThisHelp->hheight, MAXHEIGHT)+2;
+            offset = (db->dwnd.w-40) / 2;
+            for (i = 1; i < 5; i++)    {
+                db->ctl[i].dwnd.y =
+                        min(ThisHelp->hheight, MAXHEIGHT)+3;
+                db->ctl[i].dwnd.x += offset;
+            }
+            /* ---- disable ineffective buttons ---- */
+            if (ThisStack != NULL)
+                if (ThisStack->PrevStack == NULL)
+                    DfDisableButton(db, DF_ID_BACK);
+            if (ThisHelp->NextName == NULL)
+                DfDisableButton(db, DF_ID_NEXT);
+            if (ThisHelp->PrevName == NULL)
+                DfDisableButton(db, DF_ID_PREV);
             /* ------- display the help window ----- */
-            DialogBox(NULL, &HelpBox, TRUE, HelpBoxProc);
-            free(HelpBox.dwnd.title);
-			HelpBox.dwnd.title = NULL;
+            DfDialogBox(NULL, db, TRUE, DfHelpBoxProc);
+            free(db);
             fclose(helpfp);
-			helpfp = NULL;
             rtn = TRUE;
         }
     }
@@ -506,49 +593,48 @@ BOOL DisplayHelp(WINDOW wnd, char *Help)
 }
 
 /* ------- display a definition window --------- */
-static void DisplayDefinition(WINDOW wnd, char *def)
+static void DisplayDefinition(DFWINDOW wnd, char *def)
 {
-    WINDOW dwnd;
-    WINDOW hwnd = wnd;
+    DFWINDOW dwnd;
+    DFWINDOW hwnd = wnd;
     int y;
-	struct helps *HoldThisHelp;
 
-	HoldThisHelp = ThisHelp;
-    if (GetClass(wnd) == POPDOWNMENU)
-        hwnd = GetParent(wnd);
-    y = GetClass(hwnd) == MENUBAR ? 2 : 1;
-    if ((ThisHelp = FindHelp(def)) != NULL)    {
-        dwnd = CreateWindow(
-                    TEXTBOX,
-                    NULL,
-                    GetClientLeft(hwnd),
-                    GetClientTop(hwnd)+y,
-                    min(ThisHelp->hheight, MAXHEIGHT)+3,
-                    ThisHelp->hwidth+2,
-                    NULL,
-                    wnd,
-                    NULL,
-                    HASBORDER | NOCLIP | SAVESELF);
-        if (dwnd != NULL)    {
-            clearBIOSbuffer();
-            /* ----- read the help text ------- */
-            SeekHelpLine(ThisHelp->hptr, ThisHelp->bit);
-            while (TRUE)    {
-                clearBIOSbuffer();
-                if (GetHelpLine(hline) == NULL)
-                    break;
-                if (*hline == '<')
-                    break;
-                hline[strlen(hline)-1] = '\0';
-                SendMessage(dwnd,ADDTEXT,(PARAM)hline,0);
+    if (DfGetClass(wnd) == DF_POPDOWNMENU)
+        hwnd = DfGetParent(wnd);
+    y = DfGetClass(hwnd) == DF_MENUBAR ? 2 : 1;
+    FindHelp(def);
+    if (ThisHelp != NULL)    {
+        if ((helpfp = DfOpenHelpFile()) != NULL)    {
+            dwnd = DfDfCreateWindow(
+                        DF_TEXTBOX,
+                        NULL,
+                        DfGetClientLeft(hwnd),
+                        DfGetClientTop(hwnd)+y,
+                        min(ThisHelp->hheight, MAXHEIGHT)+3,
+                        ThisHelp->hwidth+2,
+                        NULL,
+                        wnd,
+                        NULL,
+                        DF_HASBORDER | DF_NOCLIP | DF_SAVESELF);
+            if (dwnd != NULL)    {
+                /* ----- read the help text ------- */
+                DfSeekHelpLine(ThisHelp->hptr, ThisHelp->bit);
+                while (TRUE)    {
+                    if (DfGetHelpLine(hline) == NULL)
+                        break;
+                    if (*hline == '<')
+                        break;
+                    hline[strlen(hline)-1] = '\0';
+                    DfSendMessage(dwnd,DFM_ADDTEXT,(DF_PARAM)hline,0);
+                }
+                DfSendMessage(dwnd, DFM_SHOW_WINDOW, 0, 0);
+                DfSendMessage(NULL, DFM_WAITKEYBOARD, 0, 0);
+                DfSendMessage(NULL, DFM_WAITMOUSE, 0, 0);
+                DfSendMessage(dwnd, DFM_CLOSE_WINDOW, 0, 0);
             }
-            SendMessage(dwnd, SHOW_WINDOW, 0, 0);
-            SendMessage(NULL, WAITKEYBOARD, 0, 0);
-            SendMessage(NULL, WAITMOUSE, 0, 0);
-            SendMessage(dwnd, CLOSE_WINDOW, 0, 0);
+            fclose(helpfp);
         }
     }
-	ThisHelp = HoldThisHelp;
 }
 
 /* ------ compare help names with wild cards ----- */
@@ -564,17 +650,25 @@ static BOOL wildcmp(char *s1, char *s2)
 }
 
 /* --- ThisHelp = the help window matching specified name --- */
-static struct helps *FindHelp(char *Help)
+static void FindHelp(char *Help)
 {
-	int i;
-	struct helps *thishelp = NULL;
-	for (i = 0; i < HelpCount; i++)	{
-        if (wildcmp(Help, (FirstHelp+i)->hname) == FALSE)	{
-		    thishelp = FirstHelp+i;
+    ThisHelp = FirstHelp;
+    while (ThisHelp != NULL)    {
+        if (wildcmp(Help, ThisHelp->hname) == FALSE)
             break;
-		}
-	}
-	return thishelp;
+        ThisHelp = ThisHelp->NextHelp;
+    }
+}
+
+/* --- ThisHelp = the help window matching specified wnd --- */
+static void FindHelpWindow(DFWINDOW wnd)
+{
+    ThisHelp = FirstHelp;
+    while (ThisHelp != NULL)    {
+        if (wnd == ThisHelp->hwnd)
+            break;
+        ThisHelp = ThisHelp->NextHelp;
+    }
 }
 
 static int OverLap(int a, int b)
@@ -586,36 +680,38 @@ static int OverLap(int a, int b)
 }
 
 /* ----- compute the best location for a help dialogbox ----- */
-static void BestFit(WINDOW wnd, DIALOGWINDOW *dwnd)
+static void BestFit(DFWINDOW wnd, DF_DIALOGWINDOW *dwnd)
 {
     int above, below, right, left;
-    if (GetClass(wnd) == MENUBAR ||
-                GetClass(wnd) == APPLICATION)    {
+    if (DfGetClass(wnd) == DF_MENUBAR ||
+                DfGetClass(wnd) == DF_APPLICATION)    {
         dwnd->x = dwnd->y = -1;
         return;
     }
     /* --- compute above overlap ---- */
-    above = OverLap(dwnd->h, GetTop(wnd));
+    above = OverLap(dwnd->h, DfGetTop(wnd));
     /* --- compute below overlap ---- */
-    below = OverLap(GetBottom(wnd), SCREENHEIGHT-dwnd->h);
+    below = OverLap(DfGetBottom(wnd), DfGetScreenHeight()-dwnd->h);
     /* --- compute right overlap ---- */
-    right = OverLap(GetRight(wnd), SCREENWIDTH-dwnd->w);
+    right = OverLap(DfGetRight(wnd), DfGetScreenWidth()-dwnd->w);
     /* --- compute left  overlap ---- */
-    left = OverLap(dwnd->w, GetLeft(wnd));
+    left = OverLap(dwnd->w, DfGetLeft(wnd));
 
     if (above < below)
-        dwnd->y = max(0, GetTop(wnd)-dwnd->h-2);
+        dwnd->y = max(0, DfGetTop(wnd)-dwnd->h-2);
     else
-        dwnd->y = min(SCREENHEIGHT-dwnd->h, GetBottom(wnd)+2);
+        dwnd->y = min(DfGetScreenHeight()-dwnd->h, DfGetBottom(wnd)+2);
     if (right < left)
-        dwnd->x = min(GetRight(wnd)+2, SCREENWIDTH-dwnd->w);
+        dwnd->x = min(DfGetRight(wnd)+2, DfGetScreenWidth()-dwnd->w);
     else
-        dwnd->x = max(0, GetLeft(wnd)-dwnd->w-2);
+        dwnd->x = max(0, DfGetLeft(wnd)-dwnd->w-2);
 
-    if (dwnd->x == GetRight(wnd)+2 ||
-            dwnd->x == GetLeft(wnd)-dwnd->w-2)
+    if (dwnd->x == DfGetRight(wnd)+2 ||
+            dwnd->x == DfGetLeft(wnd)-dwnd->w-2)
         dwnd->y = -1;
-    if (dwnd->y ==GetTop(wnd)-dwnd->h-2 ||
-            dwnd->y == GetBottom(wnd)+2)
+    if (dwnd->y ==DfGetTop(wnd)-dwnd->h-2 ||
+            dwnd->y == DfGetBottom(wnd)+2)
         dwnd->x = -1;
 }
+
+/* EOF */
