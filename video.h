@@ -5,21 +5,14 @@
 
 #include "rect.h"
 
-void getvideo(RECT, void far *);
-void storevideo(RECT, void far *);
-extern unsigned video_mode;
-extern unsigned video_page;
-void wputch(WINDOW, int, int, int);
-unsigned int GetVideoChar(int, int);
-void PutVideoChar(int, int, int);
-void get_videomode(void);
-void wputs(WINDOW, void *, int, int);
-void scroll_window(WINDOW, RECT, int);
+void DfGetVideo(DFRECT, PCHAR_INFO);
+void DfStoreVideo(DFRECT, PCHAR_INFO);
+void DfWPutch(DFWINDOW, int, int, int);
+char DfGetVideoChar(int, int);
+void DfPutVideoChar(int, int, int);
+void DfWPuts(DFWINDOW, void *, int, int);
+void DfScrollWindow(DFWINDOW, DFRECT, int);
 
-#define clr(fg,bg) ((fg)|((bg)<<4))
-#define vad(x,y) ((y)*(SCREENWIDTH*2)+(x)*2)
-#define ismono() (video_mode == 7)
-#define istext() (video_mode < 4)
-#define videochar(x,y) (GetVideoChar(x,y) & 255)
+#define DfVideoChar(x,y) (DfGetVideoChar(x,y) & 0xFF)
 
 #endif

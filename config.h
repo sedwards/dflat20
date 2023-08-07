@@ -3,20 +3,18 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-enum colortypes {
-	STD_COLOR,
-	SELECT_COLOR,
-	FRAME_COLOR,
-	HILITE_COLOR
+enum DfColorTypes {
+	DF_STD_COLOR,
+	DF_SELECT_COLOR,
+	DF_FRAME_COLOR,
+	DF_HILITE_COLOR
 };
 
-enum grounds { FG, BG };
+enum DfGrounds { DF_FG, DF_BG };
 
 /* ----------- configuration parameters ----------- */
-typedef struct config {
-    char version[sizeof VERSION];
-    char mono;         /* 0=color, 1=mono, 2=reverse mono    */
-	BOOL snowy;        /* TRUE = snowy CGA display           */
+typedef struct DfConfig {
+    char version[sizeof DF_VERSION];
     BOOL InsertMode;   /* Editor insert mode                 */
     int Tabs;          /* Editor tab stops                   */
     BOOL WordWrap;     /* True to word wrap editor           */
@@ -24,9 +22,9 @@ typedef struct config {
     BOOL Border;       /* True for application window border */
     BOOL Title;        /* True for application window title  */
 	BOOL StatusBar;    /* True for appl'n window status bar  */
-#endif
     BOOL Texture;      /* True for textured appl window      */
-    int ScreenLines;   /* Number of screen lines (25/43/50)  */
+#endif
+//    int ScreenLines;   /* Number of screen lines (25/43/50)  */
 	char PrinterPort[5];
 	int LinesPage;     /* Lines per printer page             */
 	int CharsLine;	   /* Characters per printer line        */
@@ -34,16 +32,17 @@ typedef struct config {
 	int RightMargin;
 	int TopMargin;
 	int BottomMargin;
-    unsigned char clr[CLASSCOUNT] [4] [2]; /* Colors         */
-} CONFIG;
+    unsigned char clr[DF_CLASSCOUNT] [4] [2]; /* Colors         */
+} DFCONFIG;
 
-extern CONFIG cfg;
-extern unsigned char color[CLASSCOUNT] [4] [2];
-extern unsigned char bw[CLASSCOUNT] [4] [2];
-extern unsigned char reverse[CLASSCOUNT] [4] [2];
+extern DFCONFIG DfCfg;
+extern unsigned char DfColor[DF_CLASSCOUNT] [4] [2];
+extern unsigned char DfBW[DF_CLASSCOUNT] [4] [2];
+extern unsigned char DfReverse[DF_CLASSCOUNT] [4] [2];
 
-BOOL LoadConfig(void);
-void SaveConfig(void);
-FILE *OpenConfig(char *);
+BOOL DfLoadConfig(void);
+void DfSaveConfig(void);
+FILE *DfOpenConfig(char *);
 
 #endif
+

@@ -1,10 +1,3 @@
-D-Flat has been adapted for compilation with the Smaller C compiler
-(https://github.com/alexfru/SmallerC). See compilin.txt on how to
-compile the D-Flat library and the MemoPad demo application for DOS
-with Smaller C.
-
-=======================================================
-
 February, 1995
 
 D-Flat Version 20
@@ -28,19 +21,6 @@ My CompuServe ID is 71101,1262. I monitor the DDJFORUM every day and
 prefer that you discuss D-Flat there so that every one can benefit
 from your comments.
 
-Al Stevens
-
-========== Turbo C++ 1.01 ============
-
-To build with the Turbo C++ 1.01 make utility:
-
-Set the DRIVE macro in the makefile to the drive and directory 
-where your compiler is installed.
-
-Type this command:
-
-    C>make /fmakefile.tcc
-
 ========== Borland C++ 3.1 or 4.0 ============
 
 To build with the Borland C++ 3.1 or 4.x make utility:
@@ -51,12 +31,6 @@ where your compiler is installed.
 Type this command:
 
     C>make /fmakefile.bcc
-
-========== (OPEN) WATCOM C ============
-
-To build with Watcom C 8.0 or Open Watcom C 1.9, type this command:
-
-    C>wmake /f makefile.wat
 
 =======================================================
 
@@ -125,3 +99,6 @@ Buy the DDJ CD-ROM from Miller-Freeman to get the complete D-Flat
 narrative from May '91 to October '92. These columns describe the
 development of D-Flat and serve as a tutorial on its use. The D-Flat
 reference manual is DFLAT.DOC.
+
+
+
