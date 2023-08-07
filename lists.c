@@ -1,127 +1,127 @@
 /* --------------- lists.c -------------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 /* ----- set focus to the next sibling ----- */
-void DfSetNextFocus (void)
+void SetNextFocus (void)
 {
-	if (DfInFocus != NULL)
+	if (inFocus != NULL)
 	{
-		DFWINDOW wnd1 = DfInFocus, pwnd;
+		DFWINDOW wnd1 = inFocus, pwnd;
 		while (TRUE)
 		{
-			pwnd = DfGetParent(wnd1);
-			if (DfNextWindow(wnd1) != NULL)
-				wnd1 = DfNextWindow(wnd1);
+			pwnd = GetParent(wnd1);
+			if (NextWindow(wnd1) != NULL)
+				wnd1 = NextWindow(wnd1);
 			else if (pwnd != NULL)
-				wnd1 = DfFirstWindow(pwnd);
-			if (wnd1 == NULL || wnd1 == DfInFocus)
+				wnd1 = FirstWindow(pwnd);
+			if (wnd1 == NULL || wnd1 == inFocus)
 			{
 				wnd1 = pwnd;
 				break;
 			}
-			if (DfGetClass(wnd1) == DF_STATUSBAR || DfGetClass(wnd1) == DF_MENUBAR)
+			if (GetClass(wnd1) == STATUSBAR || GetClass(wnd1) == MENUBAR)
 				continue;
-			if (DfIsVisible(wnd1))
+			if (isVisible(wnd1))
 				break;
 		}
 		if (wnd1 != NULL)
 		{
 			while (wnd1->childfocus != NULL)
 				wnd1 = wnd1->childfocus;
-			if (wnd1->condition != DF_ISCLOSING)
-				DfSendMessage(wnd1, DFM_SETFOCUS, TRUE, 0);
+			if (wnd1->condition != ISCLOSING)
+				DfSendMessage(wnd1, SETFOCUS, TRUE, 0);
 		}
 	}
 }
 
 /* ----- set focus to the previous sibling ----- */
-void DfSetPrevFocus(void)
+void SetPrevFocus(void)
 {
-	if (DfInFocus != NULL)
+	if (inFocus != NULL)
 	{
-		DFWINDOW wnd1 = DfInFocus, pwnd;
+		DFWINDOW wnd1 = inFocus, pwnd;
 		while (TRUE)
 		{
-			pwnd = DfGetParent(wnd1);
-			if (DfPrevWindow(wnd1) != NULL)
-				wnd1 = DfPrevWindow(wnd1);
+			pwnd = GetParent(wnd1);
+			if (PrevWindow(wnd1) != NULL)
+				wnd1 = PrevWindow(wnd1);
 			else if (pwnd != NULL)
-				wnd1 = DfLastWindow(pwnd);
-			if (wnd1 == NULL || wnd1 == DfInFocus)
+				wnd1 = LastWindow(pwnd);
+			if (wnd1 == NULL || wnd1 == inFocus)
 			{
 				wnd1 = pwnd;
 				break;
 			}
-			if (DfGetClass(wnd1) == DF_STATUSBAR)
+			if (GetClass(wnd1) == STATUSBAR)
 				continue;
-			if (DfIsVisible(wnd1))
+			if (isVisible(wnd1))
 				break;
 		}
 		if (wnd1 != NULL)
 		{
 			while (wnd1->childfocus != NULL)
 				wnd1 = wnd1->childfocus;
-			if (wnd1->condition != DF_ISCLOSING)
-				DfSendMessage(wnd1, DFM_SETFOCUS, TRUE, 0);
+			if (wnd1->condition != ISCLOSING)
+				DfSendMessage(wnd1, SETFOCUS, TRUE, 0);
 		}
 	}
 }
 
 /* ------- move a window to the end of its parents list ----- */
-void DfReFocus(DFWINDOW wnd)
+void ReFocus(DFWINDOW wnd)
 {
-	if (DfGetParent(wnd) != NULL)
+	if (GetParent(wnd) != NULL)
 	{
-		DfRemoveWindow(wnd);
-		DfAppendWindow(wnd);
-		DfReFocus(DfGetParent(wnd));
+		RemoveWindow(wnd);
+		AppendWindow(wnd);
+		ReFocus(GetParent(wnd));
 	}
 }
 
 /* ---- remove a window from the linked list ---- */
-void DfRemoveWindow(DFWINDOW wnd)
+void RemoveWindow(DFWINDOW wnd)
 {
 	if (wnd != NULL)
 	{
-		DFWINDOW pwnd = DfGetParent(wnd);
+		DFWINDOW pwnd = GetParent(wnd);
 
-		if (DfPrevWindow(wnd) != NULL)
-			DfNextWindow(DfPrevWindow(wnd)) = DfNextWindow(wnd);
-		if (DfNextWindow(wnd) != NULL)
-			DfPrevWindow(DfNextWindow(wnd)) = DfPrevWindow(wnd);
+		if (PrevWindow(wnd) != NULL)
+			NextWindow(PrevWindow(wnd)) = NextWindow(wnd);
+		if (NextWindow(wnd) != NULL)
+			PrevWindow(NextWindow(wnd)) = PrevWindow(wnd);
 		if (pwnd != NULL)
 		{
-			if (wnd == DfFirstWindow(pwnd))
-				DfFirstWindow(pwnd) = DfNextWindow(wnd);
-			if (wnd == DfLastWindow(pwnd))
-				DfLastWindow(pwnd) = DfPrevWindow(wnd);
+			if (wnd == FirstWindow(pwnd))
+				FirstWindow(pwnd) = NextWindow(wnd);
+			if (wnd == LastWindow(pwnd))
+				LastWindow(pwnd) = PrevWindow(wnd);
 		}
 	}
 }
 
 /* ---- append a window to the linked list ---- */
-void DfAppendWindow(DFWINDOW wnd)
+void AppendWindow(DFWINDOW wnd)
 {
 	if (wnd != NULL)
 	{
-		DFWINDOW pwnd = DfGetParent(wnd);
+		DFWINDOW pwnd = GetParent(wnd);
 		if (pwnd != NULL)
 		{
-			if (DfFirstWindow(pwnd) == NULL)
+			if (FirstWindow(pwnd) == NULL)
 			{
-				DfFirstWindow(pwnd) = wnd;
-				DfLastWindow(pwnd) = wnd;
-				DfPrevWindow(wnd) = NULL;
+				FirstWindow(pwnd) = wnd;
+				LastWindow(pwnd) = wnd;
+				PrevWindow(wnd) = NULL;
 			}
 			else
 			{
-				DfNextWindow(DfLastWindow(pwnd)) = wnd;
-				DfPrevWindow(wnd) = DfLastWindow(pwnd);
-				DfLastWindow(pwnd) = wnd;
+				NextWindow(LastWindow(pwnd)) = wnd;
+				PrevWindow(wnd) = LastWindow(pwnd);
+				LastWindow(pwnd) = wnd;
 			}
 		}
-		DfNextWindow(wnd) = NULL;
+		NextWindow(wnd) = NULL;
 	}
 }
 
@@ -129,17 +129,17 @@ void DfAppendWindow(DFWINDOW wnd)
  * if document windows and statusbar or menubar get the focus,
  * pass it on
  */
-void DfSkipApplicationControls(void)
+void SkipApplicationControls(void)
 {
 	BOOL EmptyAppl = FALSE;
 	int ct = 0;
-	while (!EmptyAppl && DfInFocus != NULL)
+	while (!EmptyAppl && inFocus != NULL)
 	{
-		DFCLASS cl = DfGetClass(DfInFocus);
-		if (cl == DF_MENUBAR || cl == DF_STATUSBAR)
+		DFCLASS cl = GetClass(inFocus);
+		if (cl == MENUBAR || cl == STATUSBAR)
 		{
-			DfSetPrevFocus();
-			EmptyAppl = (cl == DF_MENUBAR && ct++);
+			SetPrevFocus();
+			EmptyAppl = (cl == MENUBAR && ct++);
 		}
 		else
 			break;

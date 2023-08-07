@@ -1,48 +1,48 @@
 /* -------------- checkbox.c ------------ */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
-int DfCheckBoxProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int CheckBoxProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     int rtn;
-    DF_CTLWINDOW *ct = DfGetControl(wnd);
+    CTLWINDOW *ct = GetControl(wnd);
     if (ct != NULL)    {
         switch (msg)    {
-            case DFM_SETFOCUS:
+            case SETFOCUS:
                 if (!(int)p1)
-                    DfSendMessage(NULL, DFM_HIDE_CURSOR, 0, 0);
-            case DFM_MOVE:
-                rtn = DfBaseWndProc(DF_CHECKBOX, wnd, msg, p1, p2);
-                DfSetFocusCursor(wnd);
+                    DfSendMessage(NULL, HIDE_CURSOR, 0, 0);
+            case MOVE:
+                rtn = BaseWndProc(CHECKBOX, wnd, msg, p1, p2);
+                SetFocusCursor(wnd);
                 return rtn;
-            case DFM_PAINT:    {
+            case PAINT:    {
                 char cb[] = "[ ]";
                 if (ct->setting)
                     cb[1] = 'X';
-                DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
-                DfSendMessage(wnd, DFM_ADDTEXT, (DF_PARAM) cb, 0);
-                DfSetFocusCursor(wnd);
+                DfSendMessage(wnd, CLEARTEXT, 0, 0);
+                DfSendMessage(wnd, ADDTEXT, (PARAM) cb, 0);
+                SetFocusCursor(wnd);
                 break;
             }
-            case DFM_KEYBOARD:
+            case KEYBOARD:
                 if ((int)p1 != ' ')
                     break;
-            case DFM_LEFT_BUTTON:
-                ct->setting ^= DF_ON;
-                DfSendMessage(wnd, DFM_PAINT, 0, 0);
+            case LEFT_BUTTON:
+                ct->setting ^= ON;
+                DfSendMessage(wnd, PAINT, 0, 0);
                 return TRUE;
             default:
                 break;
         }
     }
-    return DfBaseWndProc(DF_CHECKBOX, wnd, msg, p1, p2);
+    return BaseWndProc(CHECKBOX, wnd, msg, p1, p2);
 }
 
-BOOL DfCheckBoxSetting(DF_DBOX *db, enum DfCommands cmd)
+BOOL CheckBoxSetting(DBOX *db, enum commands cmd)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, DF_CHECKBOX);
+    CTLWINDOW *ct = FindCommand(db, cmd, CHECKBOX);
     if (ct != NULL)
-        return (ct->isetting == DF_ON);
+        return (ct->isetting == ON);
     return FALSE;
 }
 

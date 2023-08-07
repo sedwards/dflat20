@@ -1,30 +1,30 @@
 /* -------------- text.c -------------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
-int DfTextProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int TextProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
 	int i, len;
-	DF_CTLWINDOW *ct = DfGetControl(wnd);
+	CTLWINDOW *ct = GetControl(wnd);
 	char *cp, *cp2 = ct->itext;
 	char *ptr;
 
 	switch (msg)
 	{
-		case DFM_SETFOCUS:
+		case SETFOCUS:
 			return TRUE;
 
-		case DFM_LEFT_BUTTON:
+		case LEFT_BUTTON:
 			return TRUE;
 
-		case DFM_PAINT:
+		case PAINT:
 			if (ct == NULL ||
 			    ct->itext == NULL ||
-			    DfGetText(wnd) != NULL)
+			    GetText(wnd) != NULL)
 				break;
-			len = min(ct->dwnd.h, DfMsgHeight(cp2));
+			len = min(ct->dwnd.h, MsgHeight(cp2));
 
-			ptr = DfMalloc (strlen (cp2) + 1);
+			ptr = DFmalloc (strlen (cp2) + 1);
 			strcpy (ptr, cp2);
 			cp = ptr;
 			for (i = 0; i < len; i++)
@@ -36,7 +36,7 @@ int DfTextProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 				if (np != NULL)
 					*np = '\0';
 				mlen = strlen(cp);
-				while ((cp1=strchr(cp1,DF_SHORTCUTCHAR)) != NULL)
+				while ((cp1=strchr(cp1,SHORTCUTCHAR)) != NULL)
 				{
 					mlen += 3;
 					cp1++;
@@ -44,10 +44,10 @@ int DfTextProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 
 				if (np != NULL)
 					*np = '\n';
-				txt = DfMalloc(mlen+1);
-				DfCopyCommand(txt, cp, FALSE, DfWndBackground(wnd));
+				txt = DFmalloc(mlen+1);
+				CopyCommand(txt, cp, FALSE, WndBackground(wnd));
 				txt[mlen] = '\0';
-				DfSendMessage(wnd, DFM_ADDTEXT, (DF_PARAM)txt, 0);
+				DfSendMessage(wnd, ADDTEXT, (PARAM)txt, 0);
 				if ((cp = strchr(cp, '\n')) != NULL)
 					cp++;
 				free(txt);
@@ -59,7 +59,7 @@ int DfTextProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 			break;
 	}
 
-	return DfBaseWndProc(DF_TEXT, wnd, msg, p1, p2);
+	return BaseWndProc(TEXT, wnd, msg, p1, p2);
 }
 
 /* EOF */

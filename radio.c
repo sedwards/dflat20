@@ -1,58 +1,58 @@
 /* -------- radio.c -------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
-static DF_CTLWINDOW *rct[DF_MAXRADIOS];
+static CTLWINDOW *rct[MAXRADIOS];
 
-int DfRadioButtonProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int RadioButtonProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     int rtn;
-    DF_DBOX *db = DfGetParent(wnd)->extension;
-    DF_CTLWINDOW *ct = DfGetControl(wnd);
+    DBOX *db = GetParent(wnd)->extension;
+    CTLWINDOW *ct = GetControl(wnd);
     if (ct != NULL)    {
         switch (msg)    {
-            case DFM_SETFOCUS:
+            case SETFOCUS:
                 if (!(int)p1)
-                    DfSendMessage(NULL, DFM_HIDE_CURSOR, 0, 0);
-            case DFM_MOVE:
-                rtn = DfBaseWndProc(DF_RADIOBUTTON,wnd,msg,p1,p2);
-                DfSetFocusCursor(wnd);
+                    DfSendMessage(NULL, HIDE_CURSOR, 0, 0);
+            case MOVE:
+                rtn = BaseWndProc(RADIOBUTTON,wnd,msg,p1,p2);
+                SetFocusCursor(wnd);
                 return rtn;
-            case DFM_PAINT:    {
+            case PAINT:    {
                 char rb[] = "( )";
                 if (ct->setting)
                     rb[1] = 7;
-                DfSendMessage(wnd, DFM_CLEARTEXT, 0, 0);
-                DfSendMessage(wnd, DFM_ADDTEXT, (DF_PARAM) rb, 0);
-                DfSetFocusCursor(wnd);
+                DfSendMessage(wnd, CLEARTEXT, 0, 0);
+                DfSendMessage(wnd, ADDTEXT, (PARAM) rb, 0);
+                SetFocusCursor(wnd);
                 break;
             }
-            case DFM_KEYBOARD:
+            case KEYBOARD:
                 if ((int)p1 != ' ')
                     break;
-            case DFM_LEFT_BUTTON:
-                DfSetRadioButton(db, ct);
+            case LEFT_BUTTON:
+                SetRadioButton(db, ct);
                 break;
             default:
                 break;
         }
     }
-    return DfBaseWndProc(DF_RADIOBUTTON, wnd, msg, p1, p2);
+    return BaseWndProc(RADIOBUTTON, wnd, msg, p1, p2);
 }
 
 static BOOL Setting = TRUE;
 
-void DfSetRadioButton(DF_DBOX *db, DF_CTLWINDOW *ct)
+void SetRadioButton(DBOX *db, CTLWINDOW *ct)
 {
 	Setting = FALSE;
-	DfPushRadioButton(db, ct->command);
+	PushRadioButton(db, ct->command);
 	Setting = TRUE;
 }
 
-void DfPushRadioButton(DF_DBOX *db, enum DfCommands cmd)
+void PushRadioButton(DBOX *db, enum commands cmd)
 {
-    DF_CTLWINDOW *ctt = db->ctl;
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, DF_RADIOBUTTON);
+    CTLWINDOW *ctt = db->ctl;
+    CTLWINDOW *ct = FindCommand(db, cmd, RADIOBUTTON);
     int i;
 
 	if (ct == NULL)
@@ -63,10 +63,10 @@ void DfPushRadioButton(DF_DBOX *db, enum DfCommands cmd)
 
     /* -------- build a table of all radio buttons at the
             same x vector ---------- */
-    for (i = 0; i < DF_MAXRADIOS; i++)
+    for (i = 0; i < MAXRADIOS; i++)
         rct[i] = NULL;
     while (ctt->class)    {
-        if (ctt->class == DF_RADIOBUTTON)
+        if (ctt->class == RADIOBUTTON)
             if (ct->dwnd.x == ctt->dwnd.x)
                 rct[ctt->dwnd.y] = ctt;
         ctt++;
@@ -82,34 +82,34 @@ void DfPushRadioButton(DF_DBOX *db, enum DfCommands cmd)
 
     /* ----- find the end of the radiobutton group ---- */
     i = ct->dwnd.y;
-    while (i < DF_MAXRADIOS && rct[i] != NULL)
+    while (i < MAXRADIOS && rct[i] != NULL)
         i++;
     /* ---- ignore everthing past the group ------ */
-    while (i < DF_MAXRADIOS)
+    while (i < MAXRADIOS)
         rct[i++] = NULL;
 
-    for (i = 0; i < DF_MAXRADIOS; i++)    {
+    for (i = 0; i < MAXRADIOS; i++)    {
         if (rct[i] != NULL)    {
             int wason = rct[i]->setting;
-            rct[i]->setting = DF_OFF;
+            rct[i]->setting = OFF;
 			if (Setting)
-	            rct[i]->isetting = DF_OFF;
+	            rct[i]->isetting = OFF;
             if (wason)
-                DfSendMessage(rct[i]->wnd, DFM_PAINT, 0, 0);
+                DfSendMessage(rct[i]->wnd, PAINT, 0, 0);
         }
     }
 	/* ----- set the specified radio button on ----- */
-    ct->setting = DF_ON;
+    ct->setting = ON;
 	if (Setting)
-	    ct->isetting = DF_ON;
-    DfSendMessage(ct->wnd, DFM_PAINT, 0, 0);
+	    ct->isetting = ON;
+    DfSendMessage(ct->wnd, PAINT, 0, 0);
 }
 
-BOOL DfRadioButtonSetting(DF_DBOX *db, enum DfCommands cmd)
+BOOL RadioButtonSetting(DBOX *db, enum commands cmd)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, DF_RADIOBUTTON);
+    CTLWINDOW *ct = FindCommand(db, cmd, RADIOBUTTON);
     if (ct != NULL)
-        return (ct->setting == DF_ON);
+        return (ct->setting == ON);
     return FALSE;
 }
 

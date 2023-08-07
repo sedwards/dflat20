@@ -1,33 +1,33 @@
 /* ----------------- dialbox.c -------------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
-static int inFocusCommand(DF_DBOX *);
-static void dbShortcutKeys(DF_DBOX *, int);
-static int ControlProc(DFWINDOW, DFMESSAGE, DF_PARAM, DF_PARAM);
-static void FirstFocus(DF_DBOX *db);
-static void NextFocus(DF_DBOX *db);
-static void PrevFocus(DF_DBOX *db);
-static DF_CTLWINDOW *AssociatedControl(DF_DBOX *, enum DfCommands);
+static int inFocusCommand(DBOX *);
+static void dbShortcutKeys(DBOX *, int);
+static int ControlProc(DFWINDOW, DFMESSAGE, PARAM, PARAM);
+static void FirstFocus(DBOX *db);
+static void NextFocus(DBOX *db);
+static void PrevFocus(DBOX *db);
+static CTLWINDOW *AssociatedControl(DBOX *, enum commands);
 
 static BOOL SysMenuOpen;
 
-static DF_DBOX **dbs = NULL;
+static DBOX **dbs = NULL;
 static int dbct = 0;
 
 /* --- clear all heap allocations to control text fields --- */
-void DfClearDialogBoxes(void)
+void ClearDialogBoxes(void)
 {
 	int i;
 
 	for (i = 0; i < dbct; i++)
 	{
-		DF_CTLWINDOW *ct = (*(dbs+i))->ctl;
+		CTLWINDOW *ct = (*(dbs+i))->ctl;
 
 		while (ct->class)
 		{
-			if ((ct->class == DF_EDITBOX ||
-			     ct->class == DF_COMBOBOX) &&
+			if ((ct->class == EDITBOX ||
+			     ct->class == COMBOBOX) &&
 			    ct->itext != NULL)
 			{
 				free(ct->itext);
@@ -45,11 +45,11 @@ void DfClearDialogBoxes(void)
 }
 
 
-/* -------- DFM_CREATE_WINDOW Message --------- */
-static int CreateWindowMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+/* -------- CREATE_WINDOW Message --------- */
+static int CreateWindowMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-    DF_DBOX *db = wnd->extension;
-    DF_CTLWINDOW *ct = db->ctl;
+    DBOX *db = wnd->extension;
+    CTLWINDOW *ct = db->ctl;
     DFWINDOW cwnd;
     int rtn, i;
     /* ---- build a table of processed dialog boxes ---- */
@@ -57,70 +57,70 @@ static int CreateWindowMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
         if (db == dbs[i])
             break;
     if (i == dbct)    {
-        dbs = DfRealloc(dbs, sizeof(DF_DBOX *) * (dbct+1));
+        dbs = DFrealloc(dbs, sizeof(DBOX *) * (dbct+1));
         *(dbs + dbct++) = db;
     }
-    rtn = DfBaseWndProc(DF_DIALOG, wnd, DFM_CREATE_WINDOW, p1, p2);
+    rtn = BaseWndProc(DIALOG, wnd, CREATE_WINDOW, p1, p2);
     ct = db->ctl;
     while (ct->class)    {
         int attrib = 0;
-        if (DfTestAttribute(wnd, DF_NOCLIP))
-            attrib |= DF_NOCLIP;
+        if (TestAttribute(wnd, NOCLIP))
+            attrib |= NOCLIP;
         if (wnd->Modal)
-            attrib |= DF_SAVESELF;
+            attrib |= SAVESELF;
         ct->setting = ct->isetting;
-        if (ct->class == DF_EDITBOX && ct->dwnd.h > 1)
-            attrib |= (DF_MULTILINE | DF_HASBORDER);
-        else if ((ct->class == DF_LISTBOX || ct->class == DF_TEXTBOX) &&
+        if (ct->class == EDITBOX && ct->dwnd.h > 1)
+            attrib |= (MULTILINE | HASBORDER);
+        else if ((ct->class == LISTBOX || ct->class == TEXTBOX) &&
 				ct->dwnd.h > 2)
-            attrib |= DF_HASBORDER;
-        cwnd = DfDfCreateWindow(ct->class,
+            attrib |= HASBORDER;
+        cwnd = DfCreateWindow(ct->class,
                         ct->dwnd.title,
-                        ct->dwnd.x+DfGetClientLeft(wnd),
-                        ct->dwnd.y+DfGetClientTop(wnd),
+                        ct->dwnd.x+GetClientLeft(wnd),
+                        ct->dwnd.y+GetClientTop(wnd),
                         ct->dwnd.h,
                         ct->dwnd.w,
                         ct,
                         wnd,
                         ControlProc,
                         attrib);
-        if ((ct->class == DF_EDITBOX ||
-                ct->class == DF_COMBOBOX) &&
+        if ((ct->class == EDITBOX ||
+                ct->class == COMBOBOX) &&
                     ct->itext != NULL)
-            DfSendMessage(cwnd, DFM_SETTEXT, (DF_PARAM) ct->itext, 0);
+            DfSendMessage(cwnd, SETTEXT, (PARAM) ct->itext, 0);
         ct++;
     }
     return rtn;
 }
 
-/* -------- DFM_LEFT_BUTTON Message --------- */
-static BOOL LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+/* -------- LEFT_BUTTON Message --------- */
+static BOOL LeftButtonMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-    DF_DBOX *db = wnd->extension;
-    DF_CTLWINDOW *ct = db->ctl;
-    if (DfWindowSizing || DfWindowMoving)
+    DBOX *db = wnd->extension;
+    CTLWINDOW *ct = db->ctl;
+    if (WindowSizing || WindowMoving)
         return TRUE;
-    if (DfHitControlBox(wnd, p1-DfGetLeft(wnd), p2-DfGetTop(wnd))) {
-        DfPostMessage(wnd, DFM_KEYBOARD, ' ', DF_ALTKEY);
+    if (HitControlBox(wnd, p1-GetLeft(wnd), p2-GetTop(wnd))) {
+        DfPostMessage(wnd, KEYBOARD, ' ', ALTKEY);
         return TRUE;
     }
     while (ct->class)    {
         DFWINDOW cwnd = ct->wnd;
-        if (ct->class == DF_COMBOBOX)    {
-            if (p2 == DfGetTop(cwnd))    {
-                if (p1 == DfGetRight(cwnd)+1)    {
-                    DfSendMessage(cwnd, DFM_LEFT_BUTTON, p1, p2);
+        if (ct->class == COMBOBOX)    {
+            if (p2 == GetTop(cwnd))    {
+                if (p1 == GetRight(cwnd)+1)    {
+                    DfSendMessage(cwnd, LEFT_BUTTON, p1, p2);
                     return TRUE;
                 }
             }
-            if (DfGetClass(DfInFocus) == DF_LISTBOX)
-                DfSendMessage(wnd, DFM_SETFOCUS, TRUE, 0);
+            if (GetClass(inFocus) == LISTBOX)
+                DfSendMessage(wnd, SETFOCUS, TRUE, 0);
         }
-        else if (ct->class == DF_SPINBUTTON)    {
-            if (p2 == DfGetTop(cwnd))    {
-                if (p1 == DfGetRight(cwnd)+1 ||
-                        p1 == DfGetRight(cwnd)+2)    {
-                    DfSendMessage(cwnd, DFM_LEFT_BUTTON, p1, p2);
+        else if (ct->class == SPINBUTTON)    {
+            if (p2 == GetTop(cwnd))    {
+                if (p1 == GetRight(cwnd)+1 ||
+                        p1 == GetRight(cwnd)+2)    {
+                    DfSendMessage(cwnd, LEFT_BUTTON, p1, p2);
                     return TRUE;
                 }
             }
@@ -130,42 +130,42 @@ static BOOL LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
     return FALSE;
 }
 
-/* -------- DFM_KEYBOARD Message --------- */
-static BOOL KeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+/* -------- KEYBOARD Message --------- */
+static BOOL KeyboardMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-    DF_DBOX *db = wnd->extension;
-    DF_CTLWINDOW *ct;
+    DBOX *db = wnd->extension;
+    CTLWINDOW *ct;
 
-    if (DfWindowMoving || DfWindowSizing)
+    if (WindowMoving || WindowSizing)
         return FALSE;
     switch ((int)p1)    {
-        case DF_F1:
-            ct = DfGetControl(DfInFocus);
+        case F1:
+            ct = GetControl(inFocus);
             if (ct != NULL)
-                if (DfDisplayHelp(wnd, ct->help))
+                if (DisplayHelp(wnd, ct->help))
                     return TRUE;
             break;
-        case DF_SHIFT_HT:
-        case DF_BS:
-        case DF_UP:
+        case SHIFT_HT:
+        case BS:
+        case UP:
             PrevFocus(db);
             break;
-        case DF_ALT_F6:
+        case ALT_F6:
         case '\t':
-        case DF_FWD:
-        case DF_DN:
+        case FWD:
+        case DN:
             NextFocus(db);
             break;
         case ' ':
-            if (((int)p2 & DF_ALTKEY) &&
-                    DfTestAttribute(wnd, DF_CONTROLBOX))    {
+            if (((int)p2 & ALTKEY) &&
+                    TestAttribute(wnd, CONTROLBOX))    {
                 SysMenuOpen = TRUE;
-                DfBuildSystemMenu(wnd);
+                BuildSystemMenu(wnd);
             }
             break;
-        case DF_CTRL_F4:
-        case DF_ESC:
-            DfSendMessage(wnd, DFM_COMMAND, DF_ID_CANCEL, 0);
+        case CTRL_F4:
+        case ESC:
+            DfSendMessage(wnd, DFM_COMMAND, ID_CANCEL, 0);
             break;
         default:
             /* ------ search all the shortcut keys ----- */
@@ -176,56 +176,56 @@ static BOOL KeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
 }
 
 /* -------- COMMAND Message --------- */
-static BOOL CommandMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+static BOOL CommandMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-    DF_DBOX *db = wnd->extension;
+    DBOX *db = wnd->extension;
     switch ((int) p1)    {
-        case DF_ID_OK:
-        case DF_ID_CANCEL:
+        case ID_OK:
+        case ID_CANCEL:
             if ((int)p2 != 0)
                 return TRUE;
             wnd->ReturnCode = (int) p1;
             if (wnd->Modal)
-                DfPostMessage(wnd, DFM_ENDDIALOG, 0, 0);
+                DfPostMessage(wnd, ENDDIALOG, 0, 0);
             else
-                DfSendMessage(wnd, DFM_CLOSE_WINDOW, TRUE, 0);
+                DfSendMessage(wnd, CLOSE_WINDOW, TRUE, 0);
             return TRUE;
-        case DF_ID_HELP:
+        case ID_HELP:
             if ((int)p2 != 0)
                 return TRUE;
-            return DfDisplayHelp(wnd, db->HelpName);
+            return DisplayHelp(wnd, db->HelpName);
         default:
             break;
     }
     return FALSE;
 }
 
-/* ----- window-processing module, DF_DIALOG window class ----- */
-int DfDialogProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+/* ----- window-processing module, DIALOG window class ----- */
+int DialogProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
 	int rtn;
-    DF_DBOX *db = wnd->extension;
+    DBOX *db = wnd->extension;
 
     switch (msg)    {
-        case DFM_CREATE_WINDOW:
+        case CREATE_WINDOW:
             return CreateWindowMsg(wnd, p1, p2);
-        case DFM_SHIFT_CHANGED:
+        case SHIFT_CHANGED:
             if (wnd->Modal)
                 return TRUE;
             break;
-        case DFM_LEFT_BUTTON:
+        case LEFT_BUTTON:
             if (LeftButtonMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case DFM_KEYBOARD:
+        case KEYBOARD:
             if (KeyboardMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case DFM_CLOSE_POPDOWN:
+        case CLOSE_POPDOWN:
             SysMenuOpen = FALSE;
             break;
-        case DFM_LB_SELECTION:
-        case DFM_LB_CHOOSE:
+        case LB_SELECTION:
+        case LB_CHOOSE:
             if (SysMenuOpen)
                 return TRUE;
             DfSendMessage(wnd, DFM_COMMAND, inFocusCommand(db), msg);
@@ -234,20 +234,20 @@ int DfDialogProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
             if (CommandMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case DFM_PAINT:
+        case PAINT:
             p2 = TRUE;
             break;
-		case DFM_MOVE:
-		case DFM_DFM_SIZE:
-			rtn = DfBaseWndProc(DF_DIALOG, wnd, msg, p1, p2);
+		case MOVE:
+		case DFM_SIZE:
+			rtn = BaseWndProc(DIALOG, wnd, msg, p1, p2);
 			if (wnd->dfocus != NULL)
-				DfSendMessage(wnd->dfocus, DFM_SETFOCUS, TRUE, 0);
+				DfSendMessage(wnd->dfocus, SETFOCUS, TRUE, 0);
 			return rtn;
 
-		case DFM_CLOSE_WINDOW:
+		case CLOSE_WINDOW:
 			if (!p1)
 			{
-                DfSendMessage(wnd, DFM_COMMAND, DF_ID_CANCEL, 0);
+                DfSendMessage(wnd, DFM_COMMAND, ID_CANCEL, 0);
                 return TRUE;
             }
             break;
@@ -255,12 +255,12 @@ int DfDialogProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
         default:
             break;
     }
-    return DfBaseWndProc(DF_DIALOG, wnd, msg, p1, p2);
+    return BaseWndProc(DIALOG, wnd, msg, p1, p2);
 }
 
 /* ------- create and execute a dialog box ---------- */
-BOOL DfDialogBox(DFWINDOW wnd, DF_DBOX *db, BOOL Modal,
-  int (*wndproc)(struct DfWindow *, enum DfMessages, DF_PARAM, DF_PARAM))
+BOOL DfDialogBox(DFWINDOW wnd, DBOX *db, BOOL Modal,
+  int (*wndproc)(struct window *, enum messages, PARAM, PARAM))
 {
     BOOL rtn;
     int x = db->dwnd.x, y = db->dwnd.y;
@@ -268,10 +268,10 @@ BOOL DfDialogBox(DFWINDOW wnd, DF_DBOX *db, BOOL Modal,
 
     if (!Modal && wnd != NULL)
     {
-        x += DfGetLeft(wnd);
-        y += DfGetTop(wnd);
+        x += GetLeft(wnd);
+        y += GetTop(wnd);
     }
-    DialogWnd = DfDfCreateWindow(DF_DIALOG,
+    DialogWnd = DfCreateWindow(DIALOG,
                         db->dwnd.title,
                         x, y,
                         db->dwnd.h,
@@ -279,31 +279,31 @@ BOOL DfDialogBox(DFWINDOW wnd, DF_DBOX *db, BOOL Modal,
                         db,
                         wnd,
                         wndproc,
-                        Modal ? DF_SAVESELF : 0);
+                        Modal ? SAVESELF : 0);
     DialogWnd->Modal = Modal;
     FirstFocus(db);
-    DfPostMessage(DialogWnd, DFM_INITIATE_DIALOG, 0, 0);
+    DfPostMessage(DialogWnd, INITIATE_DIALOG, 0, 0);
     if (Modal)
     {
-        DfSendMessage(DialogWnd, DFM_CAPTURE_MOUSE, 0, 0);
-        DfSendMessage(DialogWnd, DFM_CAPTURE_KEYBOARD, 0, 0);
+        DfSendMessage(DialogWnd, CAPTURE_MOUSE, 0, 0);
+        DfSendMessage(DialogWnd, CAPTURE_KEYBOARD, 0, 0);
         while (DfDispatchMessage ())
             ;
-        rtn = DialogWnd->ReturnCode == DF_ID_OK;
-        DfSendMessage(DialogWnd, DFM_RELEASE_MOUSE, 0, 0);
-        DfSendMessage(DialogWnd, DFM_RELEASE_KEYBOARD, 0, 0);
-        DfSendMessage(DialogWnd, DFM_CLOSE_WINDOW, TRUE, 0);
+        rtn = DialogWnd->ReturnCode == ID_OK;
+        DfSendMessage(DialogWnd, RELEASE_MOUSE, 0, 0);
+        DfSendMessage(DialogWnd, RELEASE_KEYBOARD, 0, 0);
+        DfSendMessage(DialogWnd, CLOSE_WINDOW, TRUE, 0);
         return rtn;
     }
     return FALSE;
 }
 
 /* ----- return command code of in-focus control window ---- */
-static int inFocusCommand(DF_DBOX *db)
+static int inFocusCommand(DBOX *db)
 {
-    DF_CTLWINDOW *ct = db->ctl;
+    CTLWINDOW *ct = db->ctl;
     while (ct->class)    {
-        if (ct->wnd == DfInFocus)
+        if (ct->wnd == inFocus)
             return ct->command;
         ct++;
     }
@@ -311,9 +311,9 @@ static int inFocusCommand(DF_DBOX *db)
 }
 
 /* -------- find a specified control structure ------- */
-DF_CTLWINDOW *DfFindCommand(DF_DBOX *db, enum DfCommands cmd, int class)
+CTLWINDOW *FindCommand(DBOX *db, enum commands cmd, int class)
 {
-    DF_CTLWINDOW *ct = db->ctl;
+    CTLWINDOW *ct = db->ctl;
     while (ct->class)
     {
         if (ct->class == class)
@@ -325,12 +325,12 @@ DF_CTLWINDOW *DfFindCommand(DF_DBOX *db, enum DfCommands cmd, int class)
 }
 
 /* ---- return the window handle of a specified command ---- */
-DFWINDOW DfControlWindow(DF_DBOX *db, enum DfCommands cmd)
+DFWINDOW ControlWindow(DBOX *db, enum commands cmd)
 {
-    DF_CTLWINDOW *ct = db->ctl;
+    CTLWINDOW *ct = db->ctl;
     while (ct->class)
     {
-        if (ct->class != DF_TEXT && cmd == ct->command)
+        if (ct->class != TEXT && cmd == ct->command)
             return ct->wnd;
         ct++;
     }
@@ -338,9 +338,9 @@ DFWINDOW DfControlWindow(DF_DBOX *db, enum DfCommands cmd)
 }
 
 /* --- return a pointer to the control structure that matches a window --- */
-DF_CTLWINDOW *WindowControl(DF_DBOX *db, DFWINDOW wnd)
+CTLWINDOW *WindowControl(DBOX *db, DFWINDOW wnd)
 {
-    DF_CTLWINDOW *ct = db->ctl;
+    CTLWINDOW *ct = db->ctl;
     while (ct->class)
     {
         if (ct->wnd == wnd)
@@ -350,11 +350,11 @@ DF_CTLWINDOW *WindowControl(DF_DBOX *db, DFWINDOW wnd)
     return NULL;
 }
 
-/* ---- set a control DF_ON or DF_OFF ----- */
-void DfControlSetting(DF_DBOX *db, enum DfCommands cmd,
+/* ---- set a control ON or OFF ----- */
+void ControlSetting(DBOX *db, enum commands cmd,
                                 int class, int setting)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, class);
+    CTLWINDOW *ct = FindCommand(db, cmd, class);
     if (ct != NULL)	{
         ct->isetting = setting;
 		if (ct->wnd != NULL)
@@ -363,9 +363,9 @@ void DfControlSetting(DF_DBOX *db, enum DfCommands cmd,
 }
 
 /* ---- return pointer to the text of a control window ---- */
-char *DfGetDlgTextString(DF_DBOX *db,enum DfCommands cmd,DFCLASS class)
+char *GetDlgTextString(DBOX *db,enum commands cmd,DFCLASS class)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, class);
+    CTLWINDOW *ct = FindCommand(db, cmd, class);
     if (ct != NULL)
         return ct->itext;
     else
@@ -373,50 +373,50 @@ char *DfGetDlgTextString(DF_DBOX *db,enum DfCommands cmd,DFCLASS class)
 }
 
 /* ------- set the text of a control specification ------ */
-void DfSetDlgTextString(DF_DBOX *db, enum DfCommands cmd,
+void SetDlgTextString(DBOX *db, enum commands cmd,
                                     char *text, DFCLASS class)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(db, cmd, class);
+    CTLWINDOW *ct = FindCommand(db, cmd, class);
     if (ct != NULL)    {
-        ct->itext = DfRealloc(ct->itext, strlen(text)+1);
+        ct->itext = DFrealloc(ct->itext, strlen(text)+1);
         strcpy(ct->itext, text);
     }
 }
 
 /* ------- set the text of a control window ------ */
-void DfPutItemText(DFWINDOW wnd, enum DfCommands cmd, char *text)
+void PutItemText(DFWINDOW wnd, enum commands cmd, char *text)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(wnd->extension, cmd, DF_EDITBOX);
+    CTLWINDOW *ct = FindCommand(wnd->extension, cmd, EDITBOX);
 
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_TEXTBOX);
+        ct = FindCommand(wnd->extension, cmd, TEXTBOX);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_COMBOBOX);
+        ct = FindCommand(wnd->extension, cmd, COMBOBOX);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_LISTBOX);
+        ct = FindCommand(wnd->extension, cmd, LISTBOX);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_SPINBUTTON);
+        ct = FindCommand(wnd->extension, cmd, SPINBUTTON);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_TEXT);
+        ct = FindCommand(wnd->extension, cmd, TEXT);
     if (ct != NULL)        {
         DFWINDOW cwnd = (DFWINDOW) (ct->wnd);
         switch (ct->class)    {
-            case DF_COMBOBOX:
-            case DF_EDITBOX:
-                DfSendMessage(cwnd, DFM_CLEARTEXT, 0, 0);
-                DfSendMessage(cwnd, DFM_ADDTEXT, (DF_PARAM) text, 0);
-                if (!DfIsMultiLine(cwnd))
-                    DfSendMessage(cwnd, DFM_PAINT, 0, 0);
+            case COMBOBOX:
+            case EDITBOX:
+                DfSendMessage(cwnd, CLEARTEXT, 0, 0);
+                DfSendMessage(cwnd, ADDTEXT, (PARAM) text, 0);
+                if (!isMultiLine(cwnd))
+                    DfSendMessage(cwnd, PAINT, 0, 0);
                 break;
-            case DF_LISTBOX:
-            case DF_TEXTBOX:
-            case DF_SPINBUTTON:
-                DfSendMessage(cwnd, DFM_ADDTEXT, (DF_PARAM) text, 0);
+            case LISTBOX:
+            case TEXTBOX:
+            case SPINBUTTON:
+                DfSendMessage(cwnd, ADDTEXT, (PARAM) text, 0);
                 break;
-            case DF_TEXT:    {
-                DfSendMessage(cwnd, DFM_CLEARTEXT, 0, 0);
-                DfSendMessage(cwnd, DFM_ADDTEXT, (DF_PARAM) text, 0);
-                DfSendMessage(cwnd, DFM_PAINT, 0, 0);
+            case TEXT:    {
+                DfSendMessage(cwnd, CLEARTEXT, 0, 0);
+                DfSendMessage(cwnd, ADDTEXT, (PARAM) text, 0);
+                DfSendMessage(cwnd, PAINT, 0, 0);
                 break;
             }
             default:
@@ -426,38 +426,38 @@ void DfPutItemText(DFWINDOW wnd, enum DfCommands cmd, char *text)
 }
 
 /* ------- get the text of a control window ------ */
-void DfGetItemText(DFWINDOW wnd, enum DfCommands cmd,
+void GetItemText(DFWINDOW wnd, enum commands cmd,
                                 char *text, int len)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(wnd->extension, cmd, DF_EDITBOX);
+    CTLWINDOW *ct = FindCommand(wnd->extension, cmd, EDITBOX);
     unsigned char *cp;
 
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_COMBOBOX);
+        ct = FindCommand(wnd->extension, cmd, COMBOBOX);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_TEXTBOX);
+        ct = FindCommand(wnd->extension, cmd, TEXTBOX);
     if (ct == NULL)
-        ct = DfFindCommand(wnd->extension, cmd, DF_TEXT);
+        ct = FindCommand(wnd->extension, cmd, TEXT);
     if (ct != NULL)    {
         DFWINDOW cwnd = (DFWINDOW) (ct->wnd);
         if (cwnd != NULL)    {
             switch (ct->class)    {
-                case DF_TEXT:
-                    if (DfGetText(cwnd) != NULL)    {
-                        cp = strchr(DfGetText(cwnd), '\n');
+                case TEXT:
+                    if (GetText(cwnd) != NULL)    {
+                        cp = strchr(GetText(cwnd), '\n');
                         if (cp != NULL)
-                            len = (int) (cp - DfGetText(cwnd));
-                        strncpy(text, DfGetText(cwnd), len);
+                            len = (int) (cp - GetText(cwnd));
+                        strncpy(text, GetText(cwnd), len);
                         *(text+len) = '\0';
                     }
                     break;
-                case DF_TEXTBOX:
-                    if (DfGetText(cwnd) != NULL)
-                        strncpy(text, DfGetText(cwnd), len);
+                case TEXTBOX:
+                    if (GetText(cwnd) != NULL)
+                        strncpy(text, GetText(cwnd), len);
                     break;
-                case DF_COMBOBOX:
-                case DF_EDITBOX:
-                    DfSendMessage(cwnd,DFM_GETTEXT,(DF_PARAM)text,len);
+                case COMBOBOX:
+                case EDITBOX:
+                    DfSendMessage(cwnd,GETTEXT,(PARAM)text,len);
                     break;
                 default:
                     break;
@@ -467,19 +467,19 @@ void DfGetItemText(DFWINDOW wnd, enum DfCommands cmd,
 }
 
 /* ------- set the text of a listbox control window ------ */
-void DfGetDlgListText(DFWINDOW wnd, char *text, enum DfCommands cmd)
+void GetDlgListText(DFWINDOW wnd, char *text, enum commands cmd)
 {
-    DF_CTLWINDOW *ct = DfFindCommand(wnd->extension, cmd, DF_LISTBOX);
-    int sel = DfSendMessage(ct->wnd, DFM_LB_CURRENTSELECTION, 0, 0);
-    DfSendMessage(ct->wnd, DFM_LB_GETTEXT, (DF_PARAM) text, sel);
+    CTLWINDOW *ct = FindCommand(wnd->extension, cmd, LISTBOX);
+    int sel = DfSendMessage(ct->wnd, LB_CURRENTSELECTION, 0, 0);
+    DfSendMessage(ct->wnd, DFM_LB_GETTEXT, (PARAM) text, sel);
 }
 
 /* -- find control structure associated with text control -- */
-static DF_CTLWINDOW *AssociatedControl(DF_DBOX *db,enum DfCommands Tcmd)
+static CTLWINDOW *AssociatedControl(DBOX *db,enum commands Tcmd)
 {
-    DF_CTLWINDOW *ct = db->ctl;
+    CTLWINDOW *ct = db->ctl;
     while (ct->class)    {
-        if (ct->class != DF_TEXT)
+        if (ct->class != TEXT)
             if (ct->command == Tcmd)
                 break;
         ct++;
@@ -488,30 +488,30 @@ static DF_CTLWINDOW *AssociatedControl(DF_DBOX *db,enum DfCommands Tcmd)
 }
 
 /* --- process dialog box shortcut keys --- */
-static void dbShortcutKeys(DF_DBOX *db, int ky)
+static void dbShortcutKeys(DBOX *db, int ky)
 {
-    DF_CTLWINDOW *ct;
-    int ch = DfAltConvert(ky);
+    CTLWINDOW *ct;
+    int ch = AltConvert(ky);
 
     if (ch != 0)    {
         ct = db->ctl;
         while (ct->class)    {
             char *cp = ct->itext;
             while (cp && *cp)    {
-                if (*cp == DF_SHORTCUTCHAR &&
+                if (*cp == SHORTCUTCHAR &&
                             tolower(*(cp+1)) == ch)    {
-                    if (ct->class == DF_TEXT)
+                    if (ct->class == TEXT)
                         ct = AssociatedControl(db, ct->command);
-                    if (ct->class == DF_RADIOBUTTON)
-                        DfSetRadioButton(db, ct);
-                    else if (ct->class == DF_CHECKBOX)    {
-                        ct->setting ^= DF_ON;
-                        DfSendMessage(ct->wnd, DFM_PAINT, 0, 0);
+                    if (ct->class == RADIOBUTTON)
+                        SetRadioButton(db, ct);
+                    else if (ct->class == CHECKBOX)    {
+                        ct->setting ^= ON;
+                        DfSendMessage(ct->wnd, PAINT, 0, 0);
                     }
                     else if (ct->class)    {
-                        DfSendMessage(ct->wnd, DFM_SETFOCUS, TRUE, 0);
-                        if (ct->class == DF_BUTTON)
-                           DfSendMessage(ct->wnd,DFM_KEYBOARD,'\r',0);
+                        DfSendMessage(ct->wnd, SETFOCUS, TRUE, 0);
+                        if (ct->class == BUTTON)
+                           DfSendMessage(ct->wnd,KEYBOARD,'\r',0);
                     }
                     return;
                 }
@@ -524,85 +524,85 @@ static void dbShortcutKeys(DF_DBOX *db, int ky)
 
 /* --- dynamically add or remove scroll bars
                             from a control window ---- */
-void DfSetScrollBars(DFWINDOW wnd)
+void SetScrollBars(DFWINDOW wnd)
 {
-    int oldattr = DfGetAttribute(wnd);
-    if (wnd->wlines > DfClientHeight(wnd))
-        DfAddAttribute(wnd, DF_VSCROLLBAR);
-    else 
-        DfClearAttribute(wnd, DF_VSCROLLBAR);
-    if (wnd->textwidth > DfClientWidth(wnd))
-        DfAddAttribute(wnd, DF_HSCROLLBAR);
-    else 
-        DfClearAttribute(wnd, DF_HSCROLLBAR);
-    if (DfGetAttribute(wnd) != oldattr)
-        DfSendMessage(wnd, DFM_BORDER, 0, 0);
+    int oldattr = GetAttribute(wnd);
+    if (wnd->wlines > ClientHeight(wnd))
+        AddAttribute(wnd, VSCROLLBAR);
+    else
+        ClearAttribute(wnd, VSCROLLBAR);
+    if (wnd->textwidth > ClientWidth(wnd))
+        AddAttribute(wnd, HSCROLLBAR);
+    else
+        ClearAttribute(wnd, HSCROLLBAR);
+    if (GetAttribute(wnd) != oldattr)
+        DfSendMessage(wnd, BORDER, 0, 0);
 }
 
-/* ------- DFM_CREATE_WINDOW Message (Control) ----- */
+/* ------- CREATE_WINDOW Message (Control) ----- */
 static void CtlCreateWindowMsg(DFWINDOW wnd)
 {
-    DF_CTLWINDOW *ct;
+    CTLWINDOW *ct;
     ct = wnd->ct = wnd->extension;
     wnd->extension = NULL;
     if (ct != NULL)
         ct->wnd = wnd;
 }
 
-/* ------- DFM_KEYBOARD Message (Control) ----- */
-static BOOL CtlKeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+/* ------- KEYBOARD Message (Control) ----- */
+static BOOL CtlKeyboardMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-    DF_CTLWINDOW *ct = DfGetControl(wnd);
+    CTLWINDOW *ct = GetControl(wnd);
     switch ((int) p1)    {
-        case DF_F1:
-            if (DfWindowMoving || DfWindowSizing)
+        case F1:
+            if (WindowMoving || WindowSizing)
                 break;
-            if (!DfDisplayHelp(wnd, ct->help))
-                DfSendMessage(DfGetParent(wnd),DFM_COMMAND,DF_ID_HELP,0);
+            if (!DisplayHelp(wnd, ct->help))
+                DfSendMessage(GetParent(wnd),DFM_COMMAND,ID_HELP,0);
             return TRUE;
         case ' ':
-            if (!((int)p2 & DF_ALTKEY))
+            if (!((int)p2 & ALTKEY))
                 break;
-        case DF_ALT_F6:
-        case DF_CTRL_F4:
-        case DF_ALT_F4:
-            DfPostMessage(DfGetParent(wnd), DFM_KEYBOARD, p1, p2);
+        case ALT_F6:
+        case CTRL_F4:
+        case ALT_F4:
+            DfPostMessage(GetParent(wnd), KEYBOARD, p1, p2);
             return TRUE;
         default:
             break;
     }
-    if (DfGetClass(wnd) == DF_EDITBOX)
-        if (DfIsMultiLine(wnd))
+    if (GetClass(wnd) == EDITBOX)
+        if (isMultiLine(wnd))
             return FALSE;
     switch ((int) p1)    {
-        case DF_UP:
-            if (!DfIsDerivedFrom(wnd, DF_LISTBOX))    {
-                p1 = DF_CTRL_FIVE;
-                p2 = DF_LEFTSHIFT;
+        case UP:
+            if (!isDerivedFrom(wnd, LISTBOX))    {
+                p1 = CTRL_FIVE;
+                p2 = LEFTSHIFT;
             }
             break;
-        case DF_BS:
-            if (!DfIsDerivedFrom(wnd, DF_EDITBOX))    {
-                p1 = DF_CTRL_FIVE;
-                p2 = DF_LEFTSHIFT;
+        case BS:
+            if (!isDerivedFrom(wnd, EDITBOX))    {
+                p1 = CTRL_FIVE;
+                p2 = LEFTSHIFT;
             }
             break;
-        case DF_DN:
-            if (!DfIsDerivedFrom(wnd, DF_LISTBOX) &&
-                    !DfIsDerivedFrom(wnd, DF_COMBOBOX))
+        case DN:
+            if (!isDerivedFrom(wnd, LISTBOX) &&
+                    !isDerivedFrom(wnd, COMBOBOX))
                 p1 = '\t';
             break;
-        case DF_FWD:
-            if (!DfIsDerivedFrom(wnd, DF_EDITBOX))
+        case FWD:
+            if (!isDerivedFrom(wnd, EDITBOX))
                 p1 = '\t';
             break;
         case '\r':
-            if (DfIsDerivedFrom(wnd, DF_EDITBOX))
-                if (DfIsMultiLine(wnd))
+            if (isDerivedFrom(wnd, EDITBOX))
+                if (isMultiLine(wnd))
                     break;
-            if (DfIsDerivedFrom(wnd, DF_BUTTON))
+            if (isDerivedFrom(wnd, BUTTON))
                 break;
-            DfSendMessage(DfGetParent(wnd), DFM_COMMAND, DF_ID_OK, 0);
+            DfSendMessage(GetParent(wnd), DFM_COMMAND, ID_OK, 0);
             return TRUE;
         default:
             break;
@@ -610,25 +610,25 @@ static BOOL CtlKeyboardMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
     return FALSE;
 }
 
-/* ------- DFM_CLOSE_WINDOW Message (Control) ----- */
+/* ------- CLOSE_WINDOW Message (Control) ----- */
 static void CtlCloseWindowMsg(DFWINDOW wnd)
 {
-    DF_CTLWINDOW *ct = DfGetControl(wnd);
+    CTLWINDOW *ct = GetControl(wnd);
     if (ct != NULL)    {
         ct->wnd = NULL;
-        if (DfGetParent(wnd)->ReturnCode == DF_ID_OK)	{
-            if (ct->class == DF_EDITBOX || ct->class == DF_COMBOBOX)	{
+        if (GetParent(wnd)->ReturnCode == ID_OK)	{
+            if (ct->class == EDITBOX || ct->class == COMBOBOX)	{
             	if (wnd->TextChanged)    {
-                	ct->itext=DfRealloc(ct->itext,strlen(wnd->text)+1);
+                	ct->itext=DFrealloc(ct->itext,strlen(wnd->text)+1);
                 	strcpy(ct->itext, wnd->text);
-                	if (!DfIsMultiLine(wnd))    {
+                	if (!isMultiLine(wnd))    {
                     	char *cp = ct->itext+strlen(ct->itext)-1;
                     	if (*cp == '\n')
                         	*cp = '\0';
                 	}
             	}
 			}
-            else if (ct->class == DF_RADIOBUTTON || ct->class == DF_CHECKBOX)
+            else if (ct->class == RADIOBUTTON || ct->class == CHECKBOX)
                 ct->isetting = ct->setting;
         }
     }
@@ -637,22 +637,22 @@ static void CtlCloseWindowMsg(DFWINDOW wnd)
 
 static void FixColors(DFWINDOW wnd)
 {
-	DF_CTLWINDOW *ct = wnd->ct;
+	CTLWINDOW *ct = wnd->ct;
 
-	if (ct->class != DF_BUTTON)
+	if (ct->class != BUTTON)
 	{
-		if (ct->class != DF_SPINBUTTON && ct->class != DF_COMBOBOX)
+		if (ct->class != SPINBUTTON && ct->class != COMBOBOX)
 		{
-			wnd->WindowColors[DF_FRAME_COLOR][DF_FG] = 
-				DfGetParent(wnd)->WindowColors[DF_FRAME_COLOR][DF_FG];
-			wnd->WindowColors[DF_FRAME_COLOR][DF_BG] = 
-				DfGetParent(wnd)->WindowColors[DF_FRAME_COLOR][DF_BG];
-			if (ct->class != DF_EDITBOX && ct->class != DF_LISTBOX)
+			wnd->WindowColors[FRAME_COLOR][FG] =
+				GetParent(wnd)->WindowColors[FRAME_COLOR][FG];
+			wnd->WindowColors[FRAME_COLOR][BG] =
+				GetParent(wnd)->WindowColors[FRAME_COLOR][BG];
+			if (ct->class != EDITBOX && ct->class != LISTBOX)
 			{
-				wnd->WindowColors[DF_STD_COLOR][DF_FG] = 
-					DfGetParent(wnd)->WindowColors[DF_STD_COLOR][DF_FG];
-				wnd->WindowColors[DF_STD_COLOR][DF_BG] = 
-					DfGetParent(wnd)->WindowColors[DF_STD_COLOR][DF_BG];
+				wnd->WindowColors[STD_COLOR][FG] =
+					GetParent(wnd)->WindowColors[STD_COLOR][FG];
+				wnd->WindowColors[STD_COLOR][BG] =
+					GetParent(wnd)->WindowColors[STD_COLOR][BG];
 			}
 		}
 	}
@@ -660,85 +660,85 @@ static void FixColors(DFWINDOW wnd)
 
 
 /* -- generic window processor used by dialog box controls -- */
-static int ControlProc(DFWINDOW wnd,DFMESSAGE msg,DF_PARAM p1,DF_PARAM p2)
+static int ControlProc(DFWINDOW wnd,DFMESSAGE msg,PARAM p1,PARAM p2)
 {
-    DF_DBOX *db;
+    DBOX *db;
 
     if (wnd == NULL)
         return FALSE;
-    db = DfGetParent(wnd) ? DfGetParent(wnd)->extension : NULL;
+    db = GetParent(wnd) ? GetParent(wnd)->extension : NULL;
 
     switch (msg)    {
-        case DFM_CREATE_WINDOW:
+        case CREATE_WINDOW:
             CtlCreateWindowMsg(wnd);
             break;
-        case DFM_KEYBOARD:
+        case KEYBOARD:
             if (CtlKeyboardMsg(wnd, p1, p2))
                 return TRUE;
             break;
-        case DFM_PAINT:
+        case PAINT:
 			FixColors(wnd);
-            if (DfGetClass(wnd) == DF_EDITBOX ||
-                    DfGetClass(wnd) == DF_LISTBOX ||
-                        DfGetClass(wnd) == DF_TEXTBOX)
-                DfSetScrollBars(wnd);
+            if (GetClass(wnd) == EDITBOX ||
+                    GetClass(wnd) == LISTBOX ||
+                        GetClass(wnd) == TEXTBOX)
+                SetScrollBars(wnd);
             break;
-        case DFM_BORDER:
+        case BORDER:
 			FixColors(wnd);
-            if (DfGetClass(wnd) == DF_EDITBOX)    {
-                DFWINDOW oldFocus = DfInFocus;
-                DfInFocus = NULL;
-                DfDefaultWndProc(wnd, msg, p1, p2);
-                DfInFocus = oldFocus;
+            if (GetClass(wnd) == EDITBOX)    {
+                DFWINDOW oldFocus = inFocus;
+                inFocus = NULL;
+                DefaultWndProc(wnd, msg, p1, p2);
+                inFocus = oldFocus;
                 return TRUE;
             }
             break;
-        case DFM_SETFOCUS:	{
-			DFWINDOW pwnd = DfGetParent(wnd);
+        case SETFOCUS:	{
+			DFWINDOW pwnd = GetParent(wnd);
 			if (p1)
 			{
-				DfDefaultWndProc(wnd, msg, p1, p2);
+				DefaultWndProc(wnd, msg, p1, p2);
 				if (pwnd != NULL)
 				{
 					pwnd->dfocus = wnd;
 					DfSendMessage(pwnd, DFM_COMMAND,
-						inFocusCommand(db), DFM_ENTERFOCUS);
+						inFocusCommand(db), ENTERFOCUS);
 				}
                 return TRUE;
             }
             else
                 DfSendMessage(pwnd, DFM_COMMAND,
-                    inFocusCommand(db), DFM_LEAVEFOCUS);
+                    inFocusCommand(db), LEAVEFOCUS);
             break;
 		}
-        case DFM_CLOSE_WINDOW:
+        case CLOSE_WINDOW:
             CtlCloseWindowMsg(wnd);
             break;
         default:
             break;
     }
-    return DfDefaultWndProc(wnd, msg, p1, p2);
+    return DefaultWndProc(wnd, msg, p1, p2);
 }
 
 /* ---- change the focus to the first control --- */
-static void FirstFocus(DF_DBOX *db)
+static void FirstFocus(DBOX *db)
 {
-	DF_CTLWINDOW *ct = db->ctl;
+	CTLWINDOW *ct = db->ctl;
 	if (ct != NULL)
 	{
-		while (ct->class == DF_TEXT || ct->class == DF_BOX)	{
+		while (ct->class == TEXT || ct->class == BOX)	{
 			ct++;
 			if (ct->class == 0)
 				return;
 		}
-		DfSendMessage(ct->wnd, DFM_SETFOCUS, TRUE, 0);
+		DfSendMessage(ct->wnd, SETFOCUS, TRUE, 0);
 	}
 }
 
 /* ---- change the focus to the next control --- */
-static void NextFocus(DF_DBOX *db)
+static void NextFocus(DBOX *db)
 {
-	DF_CTLWINDOW *ct = WindowControl(db, DfInFocus);
+	CTLWINDOW *ct = WindowControl(db, inFocus);
 	int looped = 0;
 	if (ct != NULL)
 	{
@@ -752,15 +752,15 @@ static void NextFocus(DF_DBOX *db)
 				looped++;
 				ct = db->ctl;
 			}
-		} while (ct->class == DF_TEXT || ct->class == DF_BOX);
-		DfSendMessage(ct->wnd, DFM_SETFOCUS, TRUE, 0);
+		} while (ct->class == TEXT || ct->class == BOX);
+		DfSendMessage(ct->wnd, SETFOCUS, TRUE, 0);
 	}
 }
 
 /* ---- change the focus to the previous control --- */
-static void PrevFocus(DF_DBOX *db)
+static void PrevFocus(DBOX *db)
 {
-	DF_CTLWINDOW *ct = WindowControl(db, DfInFocus);
+	CTLWINDOW *ct = WindowControl(db, inFocus);
 	int looped = 0;
 	if (ct != NULL)
 	{
@@ -775,17 +775,17 @@ static void PrevFocus(DF_DBOX *db)
 					ct++;
 			}
 			--ct;
-		} while (ct->class == DF_TEXT || ct->class == DF_BOX);
-		DfSendMessage(ct->wnd, DFM_SETFOCUS, TRUE, 0);
+		} while (ct->class == TEXT || ct->class == BOX);
+		DfSendMessage(ct->wnd, SETFOCUS, TRUE, 0);
 	}
 }
 
-void DfSetFocusCursor(DFWINDOW wnd)
+void SetFocusCursor(DFWINDOW wnd)
 {
-	if (wnd == DfInFocus)
+	if (wnd == inFocus)
 	{
-		DfSendMessage(NULL, DFM_SHOW_CURSOR, 0, 0);
-		DfSendMessage(wnd, DFM_KEYBOARD_CURSOR, 1, 0);
+		DfSendMessage(NULL, SHOW_CURSOR, 0, 0);
+		DfSendMessage(wnd, KEYBOARD_CURSOR, 1, 0);
 	}
 }
 

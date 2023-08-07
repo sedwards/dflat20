@@ -1,9 +1,9 @@
 /* ---------- dfalloc.c ---------- */
 
-#define WIN32_LEAN_AND_MEAN
+//#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 static void AllocationError(void)
 {
@@ -24,24 +24,24 @@ static void AllocationError(void)
 	{
 		OnceIn = TRUE;
 		/* ------ close all windows ------ */
-		DfSendMessage(DfApplicationWindow, DFM_CLOSE_WINDOW, 0, 0);
-		DfGetVideo(rc, savbuf);
+		DfSendMessage(ApplicationWindow, CLOSE_WINDOW, 0, 0);
+		GetVideo(rc, savbuf);
 		for (x = 0; x < 18; x++)
 		{
 			for (y = 0; y < 3; y++)
 			{
 				int c = (255 & (*(*(ErrMsg+y)+x))) | 0x7000;
-				DfPutVideoChar(x+rc.lf, y+rc.tp, c);
+				PutVideoChar(x+rc.lf, y+rc.tp, c);
 			}
 		}
-		DfGetKey(&ir);
-		DfStoreVideo(rc, savbuf);
+		GetKey(&ir);
+		StoreVideo(rc, savbuf);
 		if (AllocTesting)
 			longjmp(AllocError, 1);
 	}
 }
 
-void *DfCalloc(size_t nitems, size_t size)
+void *DFcalloc(size_t nitems, size_t size)
 {
 	void *rtn = calloc(nitems, size);
 	if (size && rtn == NULL)
@@ -49,7 +49,7 @@ void *DfCalloc(size_t nitems, size_t size)
 	return rtn;
 }
 
-void *DfMalloc(size_t size)
+void *DFmalloc(size_t size)
 {
 	void *rtn = malloc(size);
 	if (size && rtn == NULL)
@@ -57,7 +57,7 @@ void *DfMalloc(size_t size)
 	return rtn;
 }
 
-void *DfRealloc(void *block, size_t size)
+void *DFrealloc(void *block, size_t size)
 {
 	void *rtn;
 

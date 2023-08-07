@@ -1,57 +1,57 @@
 /* ----------- watch.c ----------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
-int DfWatchIconProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int WatchIconProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     int rtn;
     switch (msg)    {
-        case DFM_CREATE_WINDOW:
-            rtn = DfDefaultWndProc(wnd, msg, p1, p2);
-            DfSendMessage(wnd, DFM_CAPTURE_MOUSE, 0, 0);
-            DfSendMessage(wnd, DFM_CAPTURE_KEYBOARD, 0, 0);
+        case CREATE_WINDOW:
+            rtn = DefaultWndProc(wnd, msg, p1, p2);
+            DfSendMessage(wnd, CAPTURE_MOUSE, 0, 0);
+            DfSendMessage(wnd, CAPTURE_KEYBOARD, 0, 0);
             return rtn;
-        case DFM_PAINT:
-            DfSetStandardColor(wnd);
-            DfWriteLine(wnd, " R ", 1, 1, FALSE);
+        case PAINT:
+            SetStandardColor(wnd);
+            writeline(wnd, " R ", 1, 1, FALSE);
             return TRUE;
-        case DFM_BORDER:
-            rtn = DfDefaultWndProc(wnd, msg, p1, p2);
-            DfWriteLine(wnd, "Í", 2, 0, FALSE);
+        case BORDER:
+            rtn = DefaultWndProc(wnd, msg, p1, p2);
+            writeline(wnd, "Í", 2, 0, FALSE);
             return rtn;
         case MOUSE_MOVED:
             DfSendMessage(wnd, DFM_HIDE_WINDOW, 0, 0);
-            DfSendMessage(wnd, DFM_MOVE, p1, p2);
-            DfSendMessage(wnd, DFM_SHOW_WINDOW, 0, 0);
+            DfSendMessage(wnd, MOVE, p1, p2);
+            DfSendMessage(wnd, SHOW_WINDOW, 0, 0);
             return TRUE;
-        case DFM_CLOSE_WINDOW:
-            DfSendMessage(wnd, DFM_RELEASE_MOUSE, 0, 0);
-            DfSendMessage(wnd, DFM_RELEASE_KEYBOARD, 0, 0);
+        case CLOSE_WINDOW:
+            DfSendMessage(wnd, RELEASE_MOUSE, 0, 0);
+            DfSendMessage(wnd, RELEASE_KEYBOARD, 0, 0);
             break;
         default:
             break;
     }
-    return DfDefaultWndProc(wnd, msg, p1, p2);
+    return DefaultWndProc(wnd, msg, p1, p2);
 }
 
-DFWINDOW DfWatchIcon(void)
+DFWINDOW WatchIcon(void)
 {
     int mx, my;
     DFWINDOW wnd;
 
 /* this won't work !! */
 //    DfSendMessage(NULL, DFM_CURRENT_MOUSE_CURSOR,
-//                        (DF_PARAM) &mx, (DF_PARAM) &my);
+//                        (PARAM) &mx, (PARAM) &my);
 
-    mx = 0;//DF_SCREENWIDTH / 2;
-    mx = 0;//DF_SCREENHEIGHT / 2;
-    wnd = DfDfCreateWindow(
-                    DF_BOX,
+    mx = 0;//SCREENWIDTH / 2;
+    mx = 0;//SCREENHEIGHT / 2;
+    wnd = DfCreateWindow(
+                    BOX,
                     NULL,
                     mx, my, 3, 5,
                     NULL,NULL,
-                    DfWatchIconProc,
-                    DF_VISIBLE | DF_HASBORDER | DF_SHADOW | DF_SAVESELF);
+                    WatchIconProc,
+                    VISIBLE | HASBORDER | SHADOW | SAVESELF);
     return wnd;
 }
 

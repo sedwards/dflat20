@@ -1,71 +1,71 @@
 /* ------------ log .c ------------ */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 #ifdef INCLUDE_LOGGING
 
 static char *message[] = {
     #undef DFlatMsg
     #define DFlatMsg(m) " " #m,
-    #include "dflatmsg.h"
+    #include "dflat32/dflatmsg.h"
     NULL
 };
 
 static FILE *logfile = NULL;
-extern DF_DBOX Log;
+extern DBOX Log;
 
-void DfLogMessages (DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+void LogMessages (DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     if (logfile != NULL && message[msg][0] != ' ')
         fprintf(logfile,
             "%-20.20s %-12.12s %-20.20s, %5.5ld, %5.5ld\n",
-            wnd ? (DfGetTitle(wnd) ? DfGetTitle(wnd) : "") : "",
-            wnd ? DfClassNames[DfGetClass(wnd)] : "",
+            wnd ? (GetTitle(wnd) ? GetTitle(wnd) : "") : "",
+            wnd ? ClassNames[GetClass(wnd)] : "",
             message[msg]+1, p1, p2);
 }
 
-static int LogProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+static int LogProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
-    DFWINDOW cwnd = DfControlWindow(&Log, DF_ID_LOGLIST);
+    DFWINDOW cwnd = ControlWindow(&Log, ID_LOGLIST);
     char **mn = message;
     switch (msg)    {
-        case DFM_INITIATE_DIALOG:
-            DfAddAttribute(cwnd, DF_MULTILINE | DF_VSCROLLBAR);
+        case INITIATE_DIALOG:
+            AddAttribute(cwnd, MULTILINE | VSCROLLBAR);
             while (*mn)    {
-                DfSendMessage(cwnd, DFM_ADDTEXT, (DF_PARAM) (*mn), 0);
+                DfSendMessage(cwnd, ADDTEXT, (PARAM) (*mn), 0);
                 mn++;
             }
-            DfSendMessage(cwnd, DFM_SHOW_WINDOW, 0, 0);
+            DfSendMessage(cwnd, SHOW_WINDOW, 0, 0);
             break;
         case DFM_COMMAND:
-            if ((int) p1 == DF_ID_OK)    {
+            if ((int) p1 == ID_OK)    {
                 int item;
-                int tl = DfGetTextLines(cwnd);
+                int tl = GetTextLines(cwnd);
                 for (item = 0; item < tl; item++)
-                    if (DfItemSelected(cwnd, item))
-                        mn[item][0] = DF_LISTSELECTOR;
+                    if (ItemSelected(cwnd, item))
+                        mn[item][0] = LISTSELECTOR;
             }
             break;
         default:
             break;
     }
-    return DfDefaultWndProc(wnd, msg, p1, p2);
+    return DefaultWndProc(wnd, msg, p1, p2);
 }
 
-void DfMessageLog(DFWINDOW wnd)
+void MessageLog(DFWINDOW wnd)
 {
 	if (DfDialogBox(wnd, &Log, TRUE, LogProc))
 	{
-		if (DfCheckBoxSetting(&Log, DF_ID_LOGGING))
+		if (CheckBoxSetting(&Log, ID_LOGGING))
 		{
 			logfile = fopen("DFLAT.LOG", "wt");
-			DfSetCommandToggle(&DfMainMenu, DF_ID_LOG);
+			SetCommandToggle(&MainMenu, ID_LOG);
 		}
 		else if (logfile != NULL)
 		{
 			fclose(logfile);
 			logfile = NULL;
-			DfClearCommandToggle(&DfMainMenu, DF_ID_LOG);
+			ClearCommandToggle(&MainMenu, ID_LOG);
 		}
 	}
 }

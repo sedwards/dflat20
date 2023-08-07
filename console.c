@@ -1,29 +1,29 @@
 /* ----------- console.c ---------- */
 
-#define WIN32_LEAN_AND_MEAN
+// #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 
 /* ----- table of alt keys for finding shortcut keys ----- */
 #if 0
 static int altconvert[] = {
-    DF_ALT_A,DF_ALT_B,DF_ALT_C,DF_ALT_D,DF_ALT_E,DF_ALT_F,DF_ALT_G,DF_ALT_H,
-    DF_ALT_I,DF_ALT_J,DF_ALT_K,DF_ALT_L,DF_ALT_M,DF_ALT_N,DF_ALT_O,DF_ALT_P,
-    DF_ALT_Q,DF_ALT_R,DF_ALT_S,DF_ALT_T,DF_ALT_U,DF_ALT_V,DF_ALT_W,DF_ALT_X,
-    DF_ALT_Y,DF_ALT_Z,DF_ALT_0,DF_ALT_1,DF_ALT_2,DF_ALT_3,DF_ALT_4,DF_ALT_5,
-    DF_ALT_6,DF_ALT_7,DF_ALT_8,DF_ALT_9
+    ALT_A,ALT_B,ALT_C,ALT_D,ALT_E,ALT_F,ALT_G,ALT_H,
+    ALT_I,ALT_J,ALT_K,ALT_L,ALT_M,ALT_N,ALT_O,ALT_P,
+    ALT_Q,ALT_R,ALT_S,ALT_T,ALT_U,ALT_V,ALT_W,ALT_X,
+    ALT_Y,ALT_Z,ALT_0,ALT_1,ALT_2,ALT_3,ALT_4,ALT_5,
+    ALT_6,ALT_7,ALT_8,ALT_9
 };
 #endif
 
-static COORD cursorpos[DF_MAXSAVES];
-static CONSOLE_CURSOR_INFO cursorinfo[DF_MAXSAVES];
+static COORD cursorpos[MAXSAVES];
+static CONSOLE_CURSOR_INFO cursorinfo[MAXSAVES];
 static int cs = 0;
 
 
-void DfSwapCursorStack(void)
+void SwapCursorStack(void)
 {
 	if (cs > 1)
 	{
@@ -48,17 +48,17 @@ void DfSwapCursorStack(void)
 
 
 /* ---- Read a keystroke ---- */
-void DfGetKey (PINPUT_RECORD lpBuffer)
+void GetKey (PINPUT_RECORD lpBuffer)
 {
-	HANDLE DfInput;
+	HANDLE hInput;
 	DWORD dwRead;
 
-	DfInput = GetStdHandle (STD_INPUT_HANDLE);
+	hInput = GetStdHandle (STD_INPUT_HANDLE);
 
 	do
 	{
-//		WaitForSingleObject (DfInput, INFINITE);
-		ReadConsoleInput (DfInput, lpBuffer, 1, &dwRead);
+//		WaitForSingleObject (hInput, INFINITE);
+		ReadConsoleInput (hInput, lpBuffer, 1, &dwRead);
 		if ((lpBuffer->EventType == KEY_EVENT) &&
 			(lpBuffer->Event.KeyEvent.bKeyDown == TRUE))
 			break;
@@ -69,7 +69,7 @@ void DfGetKey (PINPUT_RECORD lpBuffer)
 
 /* ---------- read the keyboard shift status --------- */
 
-int DfGetShift(void)
+int getshift(void)
 {
 //    regs.h.ah = 2;
 //    int86(KEYBRD, &regs, &regs);
@@ -81,15 +81,15 @@ int DfGetShift(void)
 
 
 /* -------- sound a buzz tone ---------- */
-void DfBeep(void)
+void beep(void)
 {
 	Beep(440, 50);
 //	MessageBeep (-1);
 }
 
 
-/* ------ position the DfCursor ------ */
-void DfCursor(int x, int y)
+/* ------ position the cursor ------ */
+void cursor(int x, int y)
 {
 	COORD coPos;
 
@@ -99,8 +99,8 @@ void DfCursor(int x, int y)
 }
 
 
-/* ------- get the current DfCursor position ------- */
-void DfCurrCursor(int *x, int *y)
+/* ------- get the current cursor position ------- */
+void curr_cursor(int *x, int *y)
 //VOID GetCursorXY (PSHORT x, PSHORT y)
 {
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -112,10 +112,10 @@ void DfCurrCursor(int *x, int *y)
 }
 
 
-/* ------ save the current DfCursor configuration ------ */
-void DfSaveCursor(void)
+/* ------ save the current cursor configuration ------ */
+void savecursor(void)
 {
-	if (cs < DF_MAXSAVES)
+	if (cs < MAXSAVES)
 	{
 		CONSOLE_SCREEN_BUFFER_INFO csbi;
 
@@ -130,8 +130,8 @@ void DfSaveCursor(void)
 	}
 }
 
-/* ---- restore the saved DfCursor configuration ---- */
-void DfRestoreCursor(void)
+/* ---- restore the saved cursor configuration ---- */
+void restorecursor(void)
 {
 	if (cs)
 	{
@@ -143,8 +143,8 @@ void DfRestoreCursor(void)
 	}
 }
 
-/* ------ make a normal DfCursor ------ */
-void DfNormalCursor(void)
+/* ------ make a normal cursor ------ */
+void normalcursor(void)
 {
 	CONSOLE_CURSOR_INFO csi;
 
@@ -154,8 +154,8 @@ void DfNormalCursor(void)
 	                      &csi);
 }
 
-/* ------ hide the DfCursor ------ */
-void DfHideCursor(void)
+/* ------ hide the cursor ------ */
+void hidecursor(void)
 {
 	CONSOLE_CURSOR_INFO csi;
 
@@ -166,8 +166,8 @@ void DfHideCursor(void)
 	                      &csi);
 }
 
-/* ------ unhide the DfCursor ------ */
-void DfUnhideCursor(void)
+/* ------ unhide the cursor ------ */
+void unhidecursor(void)
 {
 	CONSOLE_CURSOR_INFO csi;
 
@@ -178,8 +178,8 @@ void DfUnhideCursor(void)
 	                      &csi);
 }
 
-/* set the DfCursor size (in percent) */
-void DfSetCursorSize (unsigned t)
+/* set the cursor size (in percent) */
+void set_cursor_size (unsigned t)
 {
 	CONSOLE_CURSOR_INFO csi;
 
@@ -198,7 +198,7 @@ void DfSetCursorSize (unsigned t)
 
 
 /* ------ convert an Alt+ key to its letter equivalent ----- */
-int DfAltConvert(int c)
+int AltConvert(int c)
 {
 	return c;
 #if 0

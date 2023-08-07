@@ -1,6 +1,6 @@
 /* ---------------- menubar.c ------------------ */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 static void reset_menubar(DFWINDOW);
 
@@ -10,115 +10,115 @@ static struct {
 } menu[10];
 static int mctr;
 
-DF_MBAR *DfActiveMenuBar;
-static DF_MENU *ActiveMenu;
+MBAR *ActiveMenuBar;
+static MENU *ActiveMenu;
 
 static DFWINDOW mwnd;
 static BOOL Selecting;
 
-static DFWINDOW Cascaders[DF_MAXCASCADES];
+static DFWINDOW Cascaders[MAXCASCADES];
 static int casc;
 static DFWINDOW GetDocFocus(void);
 
-/* ----------- DFM_SETFOCUS Message ----------- */
-static int SetFocusMsg(DFWINDOW wnd, DF_PARAM p1)
+/* ----------- SETFOCUS Message ----------- */
+static int SetFocusMsg(DFWINDOW wnd, PARAM p1)
 {
 	int rtn;
-	rtn = DfBaseWndProc(DF_MENUBAR, wnd, DFM_SETFOCUS, p1, 0);
+	rtn = BaseWndProc(MENUBAR, wnd, SETFOCUS, p1, 0);
 	if (!(int)p1)
-		DfSendMessage(DfGetParent(wnd), DFM_ADDSTATUS, 0, 0);
+		DfSendMessage(GetParent(wnd), ADDSTATUS, 0, 0);
 	return rtn;
 }
 
-/* --------- DFM_BUILDMENU Message --------- */
-static void BuildMenuMsg(DFWINDOW wnd, DF_PARAM p1)
+/* --------- BUILDMENU Message --------- */
+static void BuildMenuMsg(DFWINDOW wnd, PARAM p1)
 {
     int offset = 3;
     reset_menubar(wnd);
     mctr = 0;
-    DfActiveMenuBar = (DF_MBAR *) p1;
-    ActiveMenu = DfActiveMenuBar->PullDown;
+    ActiveMenuBar = (MBAR *) p1;
+    ActiveMenu = ActiveMenuBar->PullDown;
     while (ActiveMenu->Title != NULL &&
             ActiveMenu->Title != (void*)-1)
     {
         char *cp;
-        if (strlen(DfGetText(wnd)+offset) <
+        if (strlen(GetText(wnd)+offset) <
                 strlen(ActiveMenu->Title)+3)
             break;
-        DfGetText(wnd) = DfRealloc(DfGetText(wnd),
-            strlen(DfGetText(wnd))+5);
-        memmove(DfGetText(wnd) + offset+4, DfGetText(wnd) + offset,
-                strlen(DfGetText(wnd))-offset+1);
-        DfCopyCommand(DfGetText(wnd)+offset,ActiveMenu->Title,FALSE,
-                wnd->WindowColors [DF_STD_COLOR] [DF_BG]);
+        GetText(wnd) = DFrealloc(GetText(wnd),
+            strlen(GetText(wnd))+5);
+        memmove(GetText(wnd) + offset+4, GetText(wnd) + offset,
+                strlen(GetText(wnd))-offset+1);
+        CopyCommand(GetText(wnd)+offset,ActiveMenu->Title,FALSE,
+                wnd->WindowColors [STD_COLOR] [BG]);
         menu[mctr].x1 = offset;
-        offset += strlen(ActiveMenu->Title) + (3+DF_MSPACE);
-        menu[mctr].x2 = offset-DF_MSPACE;
-        cp = strchr(ActiveMenu->Title, DF_SHORTCUTCHAR);
+        offset += strlen(ActiveMenu->Title) + (3+MSPACE);
+        menu[mctr].x2 = offset-MSPACE;
+        cp = strchr(ActiveMenu->Title, SHORTCUTCHAR);
         if (cp)
             menu[mctr].sc = tolower(*(cp+1));
         mctr++;
         ActiveMenu++;
     }
-    ActiveMenu = DfActiveMenuBar->PullDown;
+    ActiveMenu = ActiveMenuBar->PullDown;
 }
 
-/* ---------- DFM_PAINT Message ---------- */
+/* ---------- PAINT Message ---------- */
 static void PaintMsg(DFWINDOW wnd)
 {
 	if (Selecting)
 		return;
-    if (wnd == DfInFocus)
-        DfSendMessage(DfGetParent(wnd), DFM_ADDSTATUS, 0, 0);
-    DfSetStandardColor(wnd);
-    DfWPuts(wnd, DfGetText(wnd), 0, 0);
-    if (DfActiveMenuBar == NULL)
+    if (wnd == inFocus)
+        DfSendMessage(GetParent(wnd), ADDSTATUS, 0, 0);
+    SetStandardColor(wnd);
+    wputs(wnd, GetText(wnd), 0, 0);
+    if (ActiveMenuBar == NULL)
 	return;
-    if (DfActiveMenuBar->ActiveSelection != -1 &&
-            (wnd == DfInFocus || mwnd != NULL))    {
+    if (ActiveMenuBar->ActiveSelection != -1 &&
+            (wnd == inFocus || mwnd != NULL))    {
         char *sel, *cp;
         int offset, offset1;
 
-        sel = DfMalloc(200);
-        offset=menu[DfActiveMenuBar->ActiveSelection].x1;
-        offset1=menu[DfActiveMenuBar->ActiveSelection].x2;
-        DfGetText(wnd)[offset1] = '\0';
-        DfSetReverseColor(wnd);
+        sel = DFmalloc(200);
+        offset=menu[ActiveMenuBar->ActiveSelection].x1;
+        offset1=menu[ActiveMenuBar->ActiveSelection].x2;
+        GetText(wnd)[offset1] = '\0';
+        SetReverseColor(wnd);
         memset(sel, '\0', 200);
-        strcpy(sel, DfGetText(wnd)+offset);
-        cp = strchr(sel, DF_CHANGECOLOR);
+        strcpy(sel, GetText(wnd)+offset);
+        cp = strchr(sel, CHANGECOLOR);
         if (cp != NULL)
-            *(cp + 2) = DfBackground | 0x80;
-        DfWPuts(wnd, sel,
-            offset-DfActiveMenuBar->ActiveSelection*4, 0);
-        DfGetText(wnd)[offset1] = ' ';
-        if (mwnd == NULL && wnd == DfInFocus) {
+            *(cp + 2) = background | 0x80;
+        wputs(wnd, sel,
+            offset-ActiveMenuBar->ActiveSelection*4, 0);
+        GetText(wnd)[offset1] = ' ';
+        if (mwnd == NULL && wnd == inFocus) {
             char *st = ActiveMenu
-                [DfActiveMenuBar->ActiveSelection].StatusText;
+                [ActiveMenuBar->ActiveSelection].StatusText;
             if (st != NULL)
-                DfSendMessage(DfGetParent(wnd), DFM_ADDSTATUS,
-                    (DF_PARAM)st, 0);
+                DfSendMessage(GetParent(wnd), ADDSTATUS,
+                    (PARAM)st, 0);
         }
         free(sel);
     }
 }
 
-/* ------------ DFM_KEYBOARD Message ------------- */
-static void KeyboardMsg(DFWINDOW wnd, DF_PARAM p1)
+/* ------------ KEYBOARD Message ------------- */
+static void KeyboardMsg(DFWINDOW wnd, PARAM p1)
 {
-	DF_MENU *mnu;
+	MENU *mnu;
 	int sel;
     if (mwnd == NULL)
     {
         /* ----- search for menu bar shortcut keys ---- */
         int c = tolower((int)p1);
-        int a = DfAltConvert((int)p1);
+        int a = AltConvert((int)p1);
         int j;
         for (j = 0; j < mctr; j++)    {
-            if ((DfInFocus == wnd && menu[j].sc == c) ||
+            if ((inFocus == wnd && menu[j].sc == c) ||
                     (a && menu[j].sc == a))    {
-				DfSendMessage(wnd, DFM_SETFOCUS, TRUE, 0);
-                DfSendMessage(wnd, DFM_MB_SELECTION, j, 0);
+				DfSendMessage(wnd, SETFOCUS, TRUE, 0);
+                DfSendMessage(wnd, MB_SELECTION, j, 0);
                 return;
             }
         }
@@ -126,19 +126,19 @@ static void KeyboardMsg(DFWINDOW wnd, DF_PARAM p1)
     /* -------- search for accelerator keys -------- */
     mnu = ActiveMenu;
     while (mnu->Title != (void *)-1)    {
-        struct DfPopDown *pd = mnu->Selections;
+        struct PopDown *pd = mnu->Selections;
         if (mnu->PrepMenu)
             (*(mnu->PrepMenu))(GetDocFocus(), mnu);
         while (pd->SelectionTitle != NULL)    {
             if (pd->Accelerator == (int) p1)    {
-                if (pd->Attrib & DF_INACTIVE)
-                    DfBeep();
+                if (pd->Attrib & INACTIVE)
+                    beep();
                 else    {
-                    if (pd->Attrib & DF_TOGGLE)
-                        pd->Attrib ^= DF_CHECKED;
+                    if (pd->Attrib & TOGGLE)
+                        pd->Attrib ^= CHECKED;
                     DfSendMessage(GetDocFocus(),
-                        DFM_SETFOCUS, TRUE, 0);
-                    DfPostMessage(DfGetParent(wnd),
+                        SETFOCUS, TRUE, 0);
+                    DfPostMessage(GetParent(wnd),
                         DFM_COMMAND, pd->ActionId, 0);
                 }
                 return;
@@ -149,164 +149,164 @@ static void KeyboardMsg(DFWINDOW wnd, DF_PARAM p1)
     }
 	switch ((int)p1)
 	{
-		case DF_F1:
-			if (ActiveMenu == NULL || DfActiveMenuBar == NULL)
+		case F1:
+			if (ActiveMenu == NULL || ActiveMenuBar == NULL)
 				break;
-			sel = DfActiveMenuBar->ActiveSelection;
+			sel = ActiveMenuBar->ActiveSelection;
 			if (sel == -1)
 			{
-				DfBaseWndProc(DF_MENUBAR, wnd, DFM_KEYBOARD, DF_F1, 0);
+				BaseWndProc(MENUBAR, wnd, KEYBOARD, F1, 0);
 				return;
 			}
 			mnu = ActiveMenu+sel;
 			if (mwnd == NULL ||
 				mnu->Selections[0].SelectionTitle == NULL)
 			{
-				DfDisplayHelp(wnd,mnu->Title+1);
+				DisplayHelp(wnd,mnu->Title+1);
 				return;
 			}
 			break;
 
         case '\r':
             if (mwnd == NULL &&
-                    DfActiveMenuBar->ActiveSelection != -1)
-                DfSendMessage(wnd, DFM_MB_SELECTION,
-                    DfActiveMenuBar->ActiveSelection, 0);
+                    ActiveMenuBar->ActiveSelection != -1)
+                DfSendMessage(wnd, MB_SELECTION,
+                    ActiveMenuBar->ActiveSelection, 0);
             break;
-        case DF_F10:
-            if (wnd != DfInFocus && mwnd == NULL)    {
-                DfSendMessage(wnd, DFM_SETFOCUS, TRUE, 0);
-			    if ( DfActiveMenuBar->ActiveSelection == -1)
-			        DfActiveMenuBar->ActiveSelection = 0;
-			    DfSendMessage(wnd, DFM_PAINT, 0, 0);
+        case F10:
+            if (wnd != inFocus && mwnd == NULL)    {
+                DfSendMessage(wnd, SETFOCUS, TRUE, 0);
+			    if ( ActiveMenuBar->ActiveSelection == -1)
+			        ActiveMenuBar->ActiveSelection = 0;
+			    DfSendMessage(wnd, PAINT, 0, 0);
                 break;
             }
             /* ------- fall through ------- */
-        case DF_ESC:
-            if (DfInFocus == wnd && mwnd == NULL)    {
-                DfActiveMenuBar->ActiveSelection = -1;
-                DfSendMessage(GetDocFocus(),DFM_SETFOCUS,TRUE,0);
-                DfSendMessage(wnd, DFM_PAINT, 0, 0);
+        case ESC:
+            if (inFocus == wnd && mwnd == NULL)    {
+                ActiveMenuBar->ActiveSelection = -1;
+                DfSendMessage(GetDocFocus(),SETFOCUS,TRUE,0);
+                DfSendMessage(wnd, PAINT, 0, 0);
             }
             break;
-        case DF_FWD:
-            DfActiveMenuBar->ActiveSelection++;
-            if (DfActiveMenuBar->ActiveSelection == mctr)
-                DfActiveMenuBar->ActiveSelection = 0;
+        case FWD:
+            ActiveMenuBar->ActiveSelection++;
+            if (ActiveMenuBar->ActiveSelection == mctr)
+                ActiveMenuBar->ActiveSelection = 0;
             if (mwnd != NULL)
-                DfSendMessage(wnd, DFM_MB_SELECTION,
-                    DfActiveMenuBar->ActiveSelection, 0);
-            else 
-                DfSendMessage(wnd, DFM_PAINT, 0, 0);
+                DfSendMessage(wnd, MB_SELECTION,
+                    ActiveMenuBar->ActiveSelection, 0);
+            else
+                DfSendMessage(wnd, PAINT, 0, 0);
             break;
-        case DF_BS:
-            if (DfActiveMenuBar->ActiveSelection == 0 ||
-					DfActiveMenuBar->ActiveSelection == -1)
-                DfActiveMenuBar->ActiveSelection = mctr;
-            --DfActiveMenuBar->ActiveSelection;
+        case BS:
+            if (ActiveMenuBar->ActiveSelection == 0 ||
+					ActiveMenuBar->ActiveSelection == -1)
+                ActiveMenuBar->ActiveSelection = mctr;
+            --ActiveMenuBar->ActiveSelection;
             if (mwnd != NULL)
-                DfSendMessage(wnd, DFM_MB_SELECTION,
-                    DfActiveMenuBar->ActiveSelection, 0);
-            else 
-                DfSendMessage(wnd, DFM_PAINT, 0, 0);
+                DfSendMessage(wnd, MB_SELECTION,
+                    ActiveMenuBar->ActiveSelection, 0);
+            else
+                DfSendMessage(wnd, PAINT, 0, 0);
             break;
         default:
             break;
     }
 }
 
-/* --------------- DFM_LEFT_BUTTON Message ---------- */
-static void LeftButtonMsg(DFWINDOW wnd, DF_PARAM p1)
+/* --------------- LEFT_BUTTON Message ---------- */
+static void LeftButtonMsg(DFWINDOW wnd, PARAM p1)
 {
     int i;
-    int mx = (int) p1 - DfGetLeft(wnd);
+    int mx = (int) p1 - GetLeft(wnd);
     /* --- compute the selection that the left button hit --- */
     for (i = 0; i < mctr; i++)
         if (mx >= menu[i].x1-4*i &&
                 mx <= menu[i].x2-4*i-5)
             break;
     if (i < mctr)
-        if (i != DfActiveMenuBar->ActiveSelection || mwnd == NULL)
-            DfSendMessage(wnd, DFM_MB_SELECTION, i, 0);
+        if (i != ActiveMenuBar->ActiveSelection || mwnd == NULL)
+            DfSendMessage(wnd, MB_SELECTION, i, 0);
 }
 
-/* -------------- DFM_MB_SELECTION Message -------------- */
-static void SelectionMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+/* -------------- MB_SELECTION Message -------------- */
+static void SelectionMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
     int wd, mx, my;
-    DF_MENU *mnu;
+    MENU *mnu;
 
 	if (!p2)
 	{
-		DfActiveMenuBar->ActiveSelection = -1;
-		DfSendMessage(wnd, DFM_PAINT, 0, 0);
+		ActiveMenuBar->ActiveSelection = -1;
+		DfSendMessage(wnd, PAINT, 0, 0);
 	}
     Selecting = TRUE;
     mnu = ActiveMenu+(int)p1;
     if (mnu->PrepMenu != NULL)
         (*(mnu->PrepMenu))(GetDocFocus(), mnu);
-    wd = DfMenuWidth(mnu->Selections);
+    wd = MenuWidth(mnu->Selections);
     if (p2)
     {
-		int brd = DfGetRight(wnd);
-        mx = DfGetLeft(mwnd) + DfWindowWidth(mwnd) - 1;
+		int brd = GetRight(wnd);
+        mx = GetLeft(mwnd) + WindowWidth(mwnd) - 1;
 		if (mx + wd > brd)
 			mx = brd - wd;
-        my = DfGetTop(mwnd) + mwnd->selection;
+        my = GetTop(mwnd) + mwnd->selection;
     }
     else
     {
         int offset = menu[(int)p1].x1 - 4 * (int)p1;
         if (mwnd != NULL)
-            DfSendMessage(mwnd, DFM_CLOSE_WINDOW, 0, 0);
-        DfActiveMenuBar->ActiveSelection = (int) p1;
-        if (offset > DfWindowWidth(wnd)-wd)
-            offset = DfWindowWidth(wnd)-wd;
-        mx = DfGetLeft(wnd)+offset;
-        my = DfGetTop(wnd)+1;
+            DfSendMessage(mwnd, CLOSE_WINDOW, 0, 0);
+        ActiveMenuBar->ActiveSelection = (int) p1;
+        if (offset > WindowWidth(wnd)-wd)
+            offset = WindowWidth(wnd)-wd;
+        mx = GetLeft(wnd)+offset;
+        my = GetTop(wnd)+1;
     }
-    mwnd = DfDfCreateWindow(DF_POPDOWNMENU, NULL,
+    mwnd = DfCreateWindow(POPDOWNMENU, NULL,
                 mx, my,
-                DfMenuHeight(mnu->Selections),
+                MenuHeight(mnu->Selections),
                 wd,
                 NULL,
                 wnd,
                 NULL,
-                DF_SHADOW);
+                SHADOW);
 	if (!p2)
 	{
 		Selecting = FALSE;
-		DfSendMessage(wnd, DFM_PAINT, 0, 0);
+		DfSendMessage(wnd, PAINT, 0, 0);
 		Selecting = TRUE;
 	}
 	if (mnu->Selections[0].SelectionTitle != NULL)
 	{
-		DfSendMessage(mwnd, DFM_BUILD_SELECTIONS, (DF_PARAM) mnu, 0);
-		DfSendMessage(mwnd, DFM_SETFOCUS, TRUE, 0);
-		DfSendMessage(mwnd, DFM_SHOW_WINDOW, 0, 0);
+		DfSendMessage(mwnd, BUILD_SELECTIONS, (PARAM) mnu, 0);
+		DfSendMessage(mwnd, SETFOCUS, TRUE, 0);
+		DfSendMessage(mwnd, SHOW_WINDOW, 0, 0);
 	}
 	Selecting = FALSE;
 }
 
 /* --------- COMMAND Message ---------- */
-static void CommandMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
+static void CommandMsg(DFWINDOW wnd, PARAM p1, PARAM p2)
 {
-	if (p1 == DF_ID_HELP)
+	if (p1 == ID_HELP)
 	{
-		DfBaseWndProc(DF_MENUBAR, wnd, DFM_COMMAND, p1, p2);
+		BaseWndProc(MENUBAR, wnd, DFM_COMMAND, p1, p2);
 		return;
 	}
 
-	if (DfIsCascadedCommand(DfActiveMenuBar, (int)p1))
+	if (isCascadedCommand(ActiveMenuBar, (int)p1))
 	{
         /* find the cascaded menu based on command id in p1 */
-        DF_MENU *mnu = ActiveMenu+mctr;
+        MENU *mnu = ActiveMenu+mctr;
         while (mnu->Title != (void *)-1)    {
             if (mnu->CascadeId == (int) p1)    {
-                if (casc < DF_MAXCASCADES)    {
+                if (casc < MAXCASCADES)    {
                     Cascaders[casc++] = mwnd;
-                    DfSendMessage(wnd, DFM_MB_SELECTION,
-                        (DF_PARAM)(mnu-ActiveMenu), TRUE);
+                    DfSendMessage(wnd, MB_SELECTION,
+                        (PARAM)(mnu-ActiveMenu), TRUE);
                 }
                 break;
             }
@@ -315,118 +315,118 @@ static void CommandMsg(DFWINDOW wnd, DF_PARAM p1, DF_PARAM p2)
     }
     else     {
         if (mwnd != NULL)
-            DfSendMessage(mwnd, DFM_CLOSE_WINDOW, 0, 0);
-        DfSendMessage(GetDocFocus(), DFM_SETFOCUS, TRUE, 0);
-        DfPostMessage(DfGetParent(wnd), DFM_COMMAND, p1, p2);
+            DfSendMessage(mwnd, CLOSE_WINDOW, 0, 0);
+        DfSendMessage(GetDocFocus(), SETFOCUS, TRUE, 0);
+        DfPostMessage(GetParent(wnd), DFM_COMMAND, p1, p2);
     }
 }
 
-/* --------------- DFM_CLOSE_POPDOWN Message --------------- */
+/* --------------- CLOSE_POPDOWN Message --------------- */
 static void ClosePopdownMsg(DFWINDOW wnd)
 {
 	if (casc > 0)
-		DfSendMessage(Cascaders[--casc], DFM_CLOSE_WINDOW, 0, 0);
+		DfSendMessage(Cascaders[--casc], CLOSE_WINDOW, 0, 0);
 	else
 	{
 		mwnd = NULL;
-		DfActiveMenuBar->ActiveSelection = -1;
+		ActiveMenuBar->ActiveSelection = -1;
 		if (!Selecting)
 		{
-			DfSendMessage(GetDocFocus(), DFM_SETFOCUS, TRUE, 0);
-			DfSendMessage(wnd, DFM_PAINT, 0, 0);
+			DfSendMessage(GetDocFocus(), SETFOCUS, TRUE, 0);
+			DfSendMessage(wnd, PAINT, 0, 0);
 		}
 	}
 }
 
-/* ---------------- DFM_CLOSE_WINDOW Message --------------- */
+/* ---------------- CLOSE_WINDOW Message --------------- */
 static void CloseWindowMsg(DFWINDOW wnd)
 {
-	if (DfGetText(wnd) != NULL)
+	if (GetText(wnd) != NULL)
 	{
-		free(DfGetText(wnd));
-		DfGetText(wnd) = NULL;
+		free(GetText(wnd));
+		GetText(wnd) = NULL;
 	}
 	mctr = 0;
-	DfActiveMenuBar->ActiveSelection = -1;
+	ActiveMenuBar->ActiveSelection = -1;
 	ActiveMenu = NULL;
-	DfActiveMenuBar = NULL;
+	ActiveMenuBar = NULL;
 }
 
-/* --- Window processing module for DF_MENUBAR window class --- */
-int DfMenuBarProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+/* --- Window processing module for MENUBAR window class --- */
+int MenuBarProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     int rtn;
 
     switch (msg)    {
-        case DFM_CREATE_WINDOW:
+        case CREATE_WINDOW:
             reset_menubar(wnd);
             break;
-        case DFM_SETFOCUS:
+        case SETFOCUS:
 			return SetFocusMsg(wnd, p1);
-        case DFM_BUILDMENU:
+        case BUILDMENU:
             BuildMenuMsg(wnd, p1);
             break;
-        case DFM_PAINT:
-            if (!DfIsVisible(wnd) || DfGetText(wnd) == NULL)
+        case PAINT:
+            if (!isVisible(wnd) || GetText(wnd) == NULL)
                 break;
             PaintMsg(wnd);
             return FALSE;
-        case DFM_BORDER:
+        case BORDER:
 		    if (mwnd == NULL)
-				DfSendMessage(wnd, DFM_PAINT, 0, 0);
+				DfSendMessage(wnd, PAINT, 0, 0);
             return TRUE;
-        case DFM_KEYBOARD:
+        case KEYBOARD:
             KeyboardMsg(wnd, p1);
             return TRUE;
-        case DFM_LEFT_BUTTON:
+        case LEFT_BUTTON:
             LeftButtonMsg(wnd, p1);
             return TRUE;
-        case DFM_MB_SELECTION:
+        case MB_SELECTION:
             SelectionMsg(wnd, p1, p2);
             break;
         case DFM_COMMAND:
             CommandMsg(wnd, p1, p2);
             return TRUE;
-        case DFM_INSIDE_WINDOW:
-            return DfInsideRect(p1, p2, DfWindowRect(wnd));
-        case DFM_CLOSE_POPDOWN:
+        case INSIDE_WINDOW:
+            return InsideRect(p1, p2, WindowRect(wnd));
+        case CLOSE_POPDOWN:
             ClosePopdownMsg(wnd);
             return TRUE;
-        case DFM_CLOSE_WINDOW:
+        case CLOSE_WINDOW:
             CloseWindowMsg(wnd);
-            rtn = DfBaseWndProc(DF_MENUBAR, wnd, msg, p1, p2);
+            rtn = BaseWndProc(MENUBAR, wnd, msg, p1, p2);
             return rtn;
         default:
             break;
     }
-    return DfBaseWndProc(DF_MENUBAR, wnd, msg, p1, p2);
+    return BaseWndProc(MENUBAR, wnd, msg, p1, p2);
 }
 
-/* ------------- reset the DF_MENUBAR -------------- */
+/* ------------- reset the MENUBAR -------------- */
 static void reset_menubar(DFWINDOW wnd)
 {
-    DfGetText(wnd) = DfRealloc(DfGetText(wnd), DfGetScreenWidth()+5);
-    memset(DfGetText(wnd), ' ', DfGetScreenWidth());
-    *(DfGetText(wnd)+DfWindowWidth(wnd)) = '\0';
+    GetText(wnd) = DFrealloc(GetText(wnd), DfGetScreenWidth()+5);
+    memset(GetText(wnd), ' ', DfGetScreenWidth());
+    *(GetText(wnd)+WindowWidth(wnd)) = '\0';
 }
 
 static DFWINDOW GetDocFocus(void)
 {
-	DFWINDOW wnd = DfApplicationWindow;
+	DFWINDOW wnd = ApplicationWindow;
 	if (wnd != NULL)
 	{
-		wnd = DfLastWindow(wnd);
+		wnd = LastWindow(wnd);
 		while (wnd != NULL &&
-		       (DfGetClass(wnd) == DF_MENUBAR ||
-		        DfGetClass(wnd) == DF_STATUSBAR))
-			wnd = DfPrevWindow(wnd);
+		       (GetClass(wnd) == MENUBAR ||
+		        GetClass(wnd) == STATUSBAR))
+			wnd = PrevWindow(wnd);
 		if (wnd != NULL)
 		{
 			while (wnd->childfocus != NULL)
 				wnd = wnd->childfocus;
 		}
 	}
-	return wnd ? wnd : DfApplicationWindow;
+	return wnd ? wnd : ApplicationWindow;
 }
 
 /* EOF */

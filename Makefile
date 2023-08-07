@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-I.
 OBJ = \
-	memopad.o dialogs.o menus.o \
+	edit.o memopad.o dialogs.o menus.o \
 	window.o video.o message.o                         \
 	mouse.o console.o textbox.o listbox.o            \
 	normal.o config.o menu.o menubar.o popdown.o   \

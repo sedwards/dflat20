@@ -1,9 +1,9 @@
 /* -------------- pictbox.c -------------- */
 
-#include "dflat.h"
+#include "dflat32/dflat.h"
 
 typedef struct    {
-    enum DfVectTypes vt;
+    enum VectTypes vt;
     DFRECT rc;
 } VECT;
 
@@ -58,7 +58,7 @@ static int FindVector(DFWINDOW wnd, DFRECT rc, int x, int y)
     VECT *vc = wnd->VectorList;
     int i, coll = -1;
     for (i = 0; i < wnd->VectorCount; i++)    {
-        if ((vc+i)->vt == DF_VECTOR)    {
+        if ((vc+i)->vt == VECTOR)    {
             rcc = (vc+i)->rc;
             /* --- skip the colliding vector --- */
             if (rcc.lf == rc.lf && rcc.rt == rc.rt &&
@@ -74,7 +74,7 @@ static int FindVector(DFWINDOW wnd, DFRECT rc, int x, int y)
                         coll = 0;
                     else if (rc.lf+x == rcc.rt)
                         coll = 2;
-                    else 
+                    else
                         coll = 1;
                 }
             }
@@ -88,7 +88,7 @@ static int FindVector(DFWINDOW wnd, DFRECT rc, int x, int y)
                         coll = 0;
                     else if (rc.tp+y == rcc.bt)
                         coll = 2;
-                    else 
+                    else
                         coll = 1;
                 }
             }
@@ -124,8 +124,8 @@ static void PaintVector(DFWINDOW wnd, DFRECT rc)
             yi = i;
         else
             xi = i;
-        ch = DfVideoChar(DfGetClientLeft(wnd)+rc.lf+xi,
-                    DfGetClientTop(wnd)+rc.tp+yi);
+        ch = videochar(GetClientLeft(wnd)+rc.lf+xi,
+                    GetClientTop(wnd)+rc.tp+yi);
         for (cw = 0; cw < sizeof(CharInWnd); cw++)    {
             if (ch == CharInWnd[cw])    {
                 /* ---- hit another vector character ---- */
@@ -141,11 +141,11 @@ static void PaintVector(DFWINDOW wnd, DFRECT rc)
                 }
             }
         }
-		DfPutWindowChar(wnd, newch, rc.lf+xi, rc.tp+yi);
+		PutWindowChar(wnd, newch, rc.lf+xi, rc.tp+yi);
     }
 }
 
-static void PaintBar(DFWINDOW wnd, DFRECT rc, enum DfVectTypes vt)
+static void PaintBar(DFWINDOW wnd, DFRECT rc, enum VectTypes vt)
 {
     int i, vertbar, len;
     unsigned int tys[] = {219, 178, 177, 176};
@@ -170,7 +170,7 @@ static void PaintBar(DFWINDOW wnd, DFRECT rc, enum DfVectTypes vt)
             yi = i;
         else
             xi = i;
-        DfPutWindowChar(wnd, nc, rc.lf+xi, rc.tp+yi);
+        PutWindowChar(wnd, nc, rc.lf+xi, rc.tp+yi);
     }
 }
 
@@ -179,7 +179,7 @@ static void PaintMsg(DFWINDOW wnd)
     int i;
     VECT *vc = wnd->VectorList;
     for (i = 0; i < wnd->VectorCount; i++)    {
-        if (vc->vt == DF_VECTOR)
+        if (vc->vt == VECTOR)
             PaintVector(wnd, vc->rc);
         else
             PaintBar(wnd, vc->rc, vc->vt);
@@ -187,11 +187,11 @@ static void PaintMsg(DFWINDOW wnd)
     }
 }
 
-static void DrawVectorMsg(DFWINDOW wnd,DF_PARAM p1,enum DfVectTypes vt)
+static void DrawVectorMsg(DFWINDOW wnd,PARAM p1,enum VectTypes vt)
 {
     if (p1)    {
         VECT vc;
-        wnd->VectorList = DfRealloc(wnd->VectorList,
+        wnd->VectorList = DFrealloc(wnd->VectorList,
                 sizeof(VECT) * (wnd->VectorCount + 1));
         vc.vt = vt;
         vc.rc = *(DFRECT *)p1;
@@ -200,48 +200,48 @@ static void DrawVectorMsg(DFWINDOW wnd,DF_PARAM p1,enum DfVectTypes vt)
     }
 }
 
-static void DrawBoxMsg(DFWINDOW wnd, DF_PARAM p1)
+static void DrawBoxMsg(DFWINDOW wnd, PARAM p1)
 {
     if (p1)    {
         DFRECT rc = *(DFRECT *)p1;
         rc.bt = rc.tp;
-        DfSendMessage(wnd, DFM_DRAWVECTOR, (DF_PARAM) &rc, TRUE);
+        DfSendMessage(wnd, DRAWVECTOR, (PARAM) &rc, TRUE);
         rc = *(DFRECT *)p1;
         rc.lf = rc.rt;
-        DfSendMessage(wnd, DFM_DRAWVECTOR, (DF_PARAM) &rc, FALSE);
+        DfSendMessage(wnd, DRAWVECTOR, (PARAM) &rc, FALSE);
         rc = *(DFRECT *)p1;
         rc.tp = rc.bt;
-        DfSendMessage(wnd, DFM_DRAWVECTOR, (DF_PARAM) &rc, TRUE);
+        DfSendMessage(wnd, DRAWVECTOR, (PARAM) &rc, TRUE);
         rc = *(DFRECT *)p1;
         rc.rt = rc.lf;
-        DfSendMessage(wnd, DFM_DRAWVECTOR, (DF_PARAM) &rc, FALSE);
+        DfSendMessage(wnd, DRAWVECTOR, (PARAM) &rc, FALSE);
     }
 }
 
-int DfPictureProc(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int PictureProc(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     switch (msg)    {
-        case DFM_PAINT:
-            DfBaseWndProc(DF_PICTUREBOX, wnd, msg, p1, p2);
+        case PAINT:
+            BaseWndProc(PICTUREBOX, wnd, msg, p1, p2);
             PaintMsg(wnd);
             return TRUE;
-        case DFM_DRAWVECTOR:
-            DrawVectorMsg(wnd, p1, DF_VECTOR);
+        case DRAWVECTOR:
+            DrawVectorMsg(wnd, p1, VECTOR);
             return TRUE;
-        case DFM_DRAWBOX:
+        case DRAWBOX:
             DrawBoxMsg(wnd, p1);
             return TRUE;
-        case DFM_DRAWBAR:
-            DrawVectorMsg(wnd, p1, (enum DfVectTypes)p2);
+        case DRAWBAR:
+            DrawVectorMsg(wnd, p1, (enum VectTypes)p2);
             return TRUE;
-        case DFM_CLOSE_WINDOW:
+        case CLOSE_WINDOW:
             if (wnd->VectorList != NULL)
                 free(wnd->VectorList);
             break;
         default:
             break;
     }
-    return DfBaseWndProc(DF_PICTUREBOX, wnd, msg, p1, p2);
+    return BaseWndProc(PICTUREBOX, wnd, msg, p1, p2);
 }
 
 static DFRECT PictureRect(int x, int y, int len, int hv)
@@ -258,27 +258,27 @@ static DFRECT PictureRect(int x, int y, int len, int hv)
     return rc;
 }
 
-void DfDrawVector(DFWINDOW wnd, int x, int y, int len, int hv)
+void DrawVector(DFWINDOW wnd, int x, int y, int len, int hv)
 {
     DFRECT rc = PictureRect(x,y,len,hv);
-    DfSendMessage(wnd, DFM_DRAWVECTOR, (DF_PARAM) &rc, 0);
+    DfSendMessage(wnd, DRAWVECTOR, (PARAM) &rc, 0);
 }
 
-void DfDrawBox(DFWINDOW wnd, int x, int y, int ht, int wd)
+void DrawBox(DFWINDOW wnd, int x, int y, int ht, int wd)
 {
     DFRECT rc;
     rc.lf = x;
     rc.tp = y;
     rc.rt = x+wd-1;
     rc.bt = y+ht-1;
-    DfSendMessage(wnd, DFM_DRAWBOX, (DF_PARAM) &rc, 0);
+    DfSendMessage(wnd, DRAWBOX, (PARAM) &rc, 0);
 }
 
-void DfDrawBar(DFWINDOW wnd,enum DfVectTypes vt,
+void DrawBar(DFWINDOW wnd,enum VectTypes vt,
                         int x,int y,int len,int hv)
 {
     DFRECT rc = PictureRect(x,y,len,hv);
-    DfSendMessage(wnd, DFM_DRAWBAR, (DF_PARAM) &rc, (DF_PARAM) vt);
+    DfSendMessage(wnd, DRAWBAR, (PARAM) &rc, (PARAM) vt);
 }
 
 /* EOF */

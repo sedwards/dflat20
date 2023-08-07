@@ -1,7 +1,7 @@
 /* --------- message.c ---------- */
 
-#include "dflat.h"
-#include "system.h"
+#include "dflat32/dflat.h"
+#include "dflat32/system.h"
 
 static int handshaking = 0;
 
@@ -15,16 +15,16 @@ static struct events
 	DFMESSAGE event;
 	int mx;
 	int my;
-} EventQueue[DF_MAXMESSAGES];
+} EventQueue[MAXMESSAGES];
 
 /* ---------- message queue --------- */
 static struct msgs
 {
 	DFWINDOW wnd;
 	DFMESSAGE msg;
-	DF_PARAM p1;
-	DF_PARAM p2;
-} MsgQueue[DF_MAXMESSAGES];
+	PARAM p1;
+	PARAM p2;
+} MsgQueue[MAXMESSAGES];
 
 static int EventQueueOnCtr;
 static int EventQueueOffCtr;
@@ -35,36 +35,36 @@ static int MsgQueueOffCtr;
 static int MsgQueueCtr;
 
 
-DFWINDOW DfCaptureMouse;
-DFWINDOW DfCaptureKeyboard;
+DFWINDOW CaptureMouse;
+DFWINDOW CaptureKeyboard;
 static BOOL NoChildCaptureMouse;
 static BOOL NoChildCaptureKeyboard;
 
-//static int doubletimer = -1;
-//static int delaytimer  = -1;
+static int doubletimer = -1;
+static int delaytimer  = -1;
 static int clocktimer  = -1;
 
 static DFWINDOW Cwnd;
 
-//static char ermsg[] = "Error accessing drive x";
+static char ermsg[] = "Error accessing drive x";
 
 
 static void StopMsg(void)
 {
-	DfClearClipboard();
-	DfClearDialogBoxes();
-	DfRestoreCursor();
-	DfUnhideCursor();
+	ClearClipboard();
+	ClearDialogBoxes();
+	restorecursor();
+	unhidecursor();
 }
 
 SHORT DfGetScreenHeight (void)
 {
-	return DfScreenHeight;
+	return sScreenHeight;
 }
 
 SHORT DfGetScreenWidth (void)
 {
-	return DfScreenWidth;
+	return sScreenWidth;
 }
 
 /* ------------ initialize the message system --------- */
@@ -80,22 +80,22 @@ BOOL DfInitialize (VOID)
 	}
 
 	/* get input and output handles */
-	DfInput = GetStdHandle (STD_INPUT_HANDLE);
-	DfOutput = GetStdHandle (STD_OUTPUT_HANDLE);
+	hInput = GetStdHandle (STD_INPUT_HANDLE);
+	hOutput = GetStdHandle (STD_OUTPUT_HANDLE);
 
 	/* get screen size */
-	GetConsoleScreenBufferInfo (DfOutput, &csbi);
-	DfScreenHeight = (csbi.srWindow.Bottom - csbi.srWindow.Top) + 1;
-	DfScreenWidth = (csbi.srWindow.Right - csbi.srWindow.Left) + 1;
+	GetConsoleScreenBufferInfo (hOutput, &csbi);
+	sScreenHeight = (csbi.srWindow.Bottom - csbi.srWindow.Top) + 1;
+	sScreenWidth = (csbi.srWindow.Right - csbi.srWindow.Left) + 1;
 
 	/* enable mouse events */
-	SetConsoleMode (DfInput, ENABLE_MOUSE_INPUT);
+	SetConsoleMode (hInput, ENABLE_MOUSE_INPUT);
 
-	DfSaveCursor();
-	DfHideCursor();
+	savecursor();
+	hidecursor();
 
-	DfCaptureMouse = NULL;
-	DfCaptureKeyboard = NULL;
+	CaptureMouse = NULL;
+	CaptureKeyboard = NULL;
 	NoChildCaptureMouse = FALSE;
 	NoChildCaptureKeyboard = FALSE;
 	MsgQueueOnCtr = 0;
@@ -118,11 +118,11 @@ void DfTerminate (void)
 /* ----- post an event and parameters to event queue ---- */
 static void PostEvent(DFMESSAGE event, int p1, int p2)
 {
-    if (EventQueueCtr != DF_MAXMESSAGES)    {
+    if (EventQueueCtr != MAXMESSAGES)    {
         EventQueue[EventQueueOnCtr].event = event;
         EventQueue[EventQueueOnCtr].mx = p1;
         EventQueue[EventQueueOnCtr].my = p2;
-        if (++EventQueueOnCtr == DF_MAXMESSAGES)
+        if (++EventQueueOnCtr == MAXMESSAGES)
             EventQueueOnCtr = 0;
         EventQueueCtr++;
     }
@@ -141,14 +141,14 @@ static void collect_events(void)
 	int hr;
 #endif
 
-	HANDLE DfInput = GetStdHandle (STD_INPUT_HANDLE);
+	HANDLE hInput = GetStdHandle (STD_INPUT_HANDLE);
 	INPUT_RECORD ir;
 	DWORD dwRead;
 	int c;
 
 #ifdef TIMER_AVAILABLE
     /* -------- test for a clock event (one/second) ------- */
-    if (DfTimedOut(clocktimer))
+    if (timed_out(clocktimer))
     {
         /* ----- get the current time ----- */
         time_t t = time(NULL);
@@ -165,14 +165,14 @@ static void collect_events(void)
             *(timestr+2) = ' ';
         flipflop ^= TRUE;
         /* -------- reset the timer -------- */
-        DfSetTimer(clocktimer, 1);
+        set_timer(clocktimer, 1);
         /* -------- post the clock event -------- */
-        PostEvent(DFM_CLOCKTICK, (DF_PARAM)timestr, 0);
+        PostEvent(CLOCKTICK, (PARAM)timestr, 0);
     }
 #endif
 
-//	WaitForSingleObject (DfInput, INFINITE);
-	ReadConsoleInput (DfInput, &ir, 1, &dwRead);
+//	WaitForSingleObject (hInput, INFINITE);
+	ReadConsoleInput (hInput, &ir, 1, &dwRead);
 
 	if ((ir.EventType == KEY_EVENT) &&
 	    (ir.Event.KeyEvent.bKeyDown == TRUE))
@@ -183,25 +183,25 @@ static void collect_events(void)
 		if (ir.Event.KeyEvent.dwControlKeyState &
 		    (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED))
 		{
-			sk |= DF_ALTKEY;
+			sk |= ALTKEY;
 		}
 		if (ir.Event.KeyEvent.dwControlKeyState &
 		    (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED))
 		{
-			sk |= DF_CTRLKEY;
+			sk |= CTRLKEY;
 		}
 		if (ir.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED)
 		{
-			sk |= DF_LEFTSHIFT + DF_RIGHTSHIFT;
+			sk |= LEFTSHIFT + RIGHTSHIFT;
 		}
 
 		if (sk != OldShiftKeys)
 		{
 			OldShiftKeys = sk;
 			/* the shift status changed */
-			PostEvent(DFM_SHIFT_CHANGED, sk, 0);
+			PostEvent(SHIFT_CHANGED, sk, 0);
 #if 0
-			if (sk & DF_ALTKEY)
+			if (sk & ALTKEY)
 				AltDown = TRUE;
 			else
 				AltDown = FALSE;
@@ -213,59 +213,59 @@ static void collect_events(void)
 			switch (ir.Event.KeyEvent.wVirtualKeyCode)
 			{
 				case VK_F1:
-					c = DF_F1;
+					c = F1;
 					break;
 
 				case VK_F4:
-					if (sk & DF_ALTKEY)
-						c = DF_ALT_F4;
-					else if (sk & DF_CTRLKEY)
-						c = DF_CTRL_F4;
+					if (sk & ALTKEY)
+						c = ALT_F4;
+					else if (sk & CTRLKEY)
+						c = CTRL_F4;
 					else
-						c = DF_F4;
+						c = F4;
 
 				case VK_F10:
-					c = DF_F10;
+					c = F10;
 					break;
 
 				case VK_UP:
-					c = DF_UP;
+					c = UP;
 					break;
 
 				case VK_DOWN:
-					c = DF_DN;
+					c = DN;
 					break;
 
 				case VK_LEFT:
-					c = DF_BS;
+					c = BS;
 					break;
 
 				case VK_RIGHT:
-					c = DF_FWD;
+					c = FWD;
 					break;
 
 				case VK_INSERT:
-					c = DF_INS;
+					c = INS;
 					break;
 
 				case VK_DELETE:
-					c = DF_DEL;
+					c = DEL;
 					break;
 
 				case VK_HOME:
-					c = DF_HOME;
+					c = HOME;
 					break;
 
 				case VK_END:
-					c = DF_END;
+					c = END;
 					break;
 
 				case VK_PRIOR:
-					c = DF_PGUP;
+					c = PGUP;
 					break;
 
 				case VK_NEXT:
-					c = DF_PGDN;
+					c = PGDN;
 					break;
 
 				default:
@@ -277,12 +277,12 @@ static void collect_events(void)
 			/* special handling of SHIFT+TAB */
 			if (ir.Event.KeyEvent.uChar.AsciiChar == VK_TAB &&
 			    (ir.Event.KeyEvent.dwControlKeyState & SHIFT_PRESSED))
-				c = DF_SHIFT_HT;
+				c = SHIFT_HT;
 			else
 				c = ir.Event.KeyEvent.uChar.AsciiChar;
 		}
 
-		PostEvent (DFM_KEYBOARD, c, sk);
+		PostEvent (KEYBOARD, c, sk);
 	}
 	else if (ir.EventType == MOUSE_EVENT)
 	{
@@ -309,14 +309,14 @@ static void collect_events(void)
 			if (ir.Event.MouseEvent.dwButtonState ==
 			    FROM_LEFT_1ST_BUTTON_PRESSED)
 			{
-				PostEvent (DFM_LEFT_BUTTON,
+				PostEvent (LEFT_BUTTON,
 				           ir.Event.MouseEvent.dwMousePosition.X,
 				           ir.Event.MouseEvent.dwMousePosition.Y);
 			}
 			else if (ir.Event.MouseEvent.dwButtonState ==
 			         RIGHTMOST_BUTTON_PRESSED)
 			{
-				PostEvent (DFM_RIGHT_BUTTON,
+				PostEvent (RIGHT_BUTTON,
 				           ir.Event.MouseEvent.dwMousePosition.X,
 				           ir.Event.MouseEvent.dwMousePosition.Y);
 			}
@@ -332,57 +332,57 @@ static void collect_events(void)
 
 
 /* ----- post a message and parameters to msg queue ---- */
-void DfPostMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+void DfPostMessage(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
-	if (msg == DFM_ENDDIALOG)
+	if (msg == ENDDIALOG)
 	{
 		msg++;
 		--msg;
 	}
 
-	if (MsgQueueCtr != DF_MAXMESSAGES)
+	if (MsgQueueCtr != MAXMESSAGES)
 	{
 		MsgQueue[MsgQueueOnCtr].wnd = wnd;
 		MsgQueue[MsgQueueOnCtr].msg = msg;
 		MsgQueue[MsgQueueOnCtr].p1 = p1;
 		MsgQueue[MsgQueueOnCtr].p2 = p2;
-		if (++MsgQueueOnCtr == DF_MAXMESSAGES)
+		if (++MsgQueueOnCtr == MAXMESSAGES)
 			MsgQueueOnCtr = 0;
 		MsgQueueCtr++;
 	}
 }
 
 /* --------- send a message to a window ----------- */
-int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
+int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, PARAM p1, PARAM p2)
 {
     int rtn = TRUE, x, y;
 
 #ifdef INCLUDE_LOGGING
-	DfLogMessages(wnd, msg, p1, p2);
+	LogMessages(wnd, msg, p1, p2);
 #endif
     if (wnd != NULL)
         switch (msg)    {
-            case DFM_PAINT:
-            case DFM_BORDER:
+            case PAINT:
+            case BORDER:
                 /* ------- don't send these messages unless the
                     window is visible -------- */
-                if (DfIsVisible(wnd))
+                if (isVisible(wnd))
 	                rtn = (*wnd->wndproc)(wnd, msg, p1, p2);
                 break;
-            case DFM_RIGHT_BUTTON:
-            case DFM_LEFT_BUTTON:
+            case RIGHT_BUTTON:
+            case LEFT_BUTTON:
             case DOUBLE_CLICK:
             case DFM_BUTTON_RELEASED:
                 /* --- don't send these messages unless the
                     window is visible or has captured the mouse -- */
-                if (DfIsVisible(wnd) || wnd == DfCaptureMouse)
+                if (isVisible(wnd) || wnd == CaptureMouse)
 	                rtn = (*wnd->wndproc)(wnd, msg, p1, p2);
                 break;
-            case DFM_KEYBOARD:
-            case DFM_SHIFT_CHANGED:
+            case KEYBOARD:
+            case SHIFT_CHANGED:
                 /* ------- don't send these messages unless the
                     window is visible or has captured the keyboard -- */
-                if (!(DfIsVisible(wnd) || wnd == DfCaptureKeyboard))
+                if (!(isVisible(wnd) || wnd == CaptureKeyboard))
 	                break;
             default:
                 rtn = (*wnd->wndproc)(wnd, msg, p1, p2);
@@ -398,38 +398,38 @@ int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 				StopMsg();
                 break;
             /* ------- clock messages --------- */
-            case DFM_CAPTURE_CLOCK:
+            case CAPTURE_CLOCK:
                 Cwnd = wnd;
-                DfSetTimer(clocktimer, 0);
+                set_timer(clocktimer, 0);
                 break;
-            case DFM_RELEASE_CLOCK:
+            case RELEASE_CLOCK:
                 Cwnd = NULL;
-                DfDisableTimer(clocktimer);
+                disable_timer(clocktimer);
                 break;
             /* -------- keyboard messages ------- */
-            case DFM_KEYBOARD_CURSOR:
+            case KEYBOARD_CURSOR:
                 if (wnd == NULL)
-                    DfCursor((int)p1, (int)p2);
-                else if (wnd == DfInFocus)
-                    DfCursor(DfGetClientLeft(wnd)+(int)p1,
-                                DfGetClientTop(wnd)+(int)p2);
+                    cursor((int)p1, (int)p2);
+                else if (wnd == inFocus)
+                    cursor(GetClientLeft(wnd)+(int)p1,
+                                GetClientTop(wnd)+(int)p2);
                 break;
-            case DFM_CAPTURE_KEYBOARD:
+            case CAPTURE_KEYBOARD:
                 if (p2)
-                    ((DFWINDOW)p2)->PrevKeyboard=DfCaptureKeyboard;
+                    ((DFWINDOW)p2)->PrevKeyboard=CaptureKeyboard;
                 else
-                    wnd->PrevKeyboard = DfCaptureKeyboard;
-                DfCaptureKeyboard = wnd;
+                    wnd->PrevKeyboard = CaptureKeyboard;
+                CaptureKeyboard = wnd;
                 NoChildCaptureKeyboard = (int)p1;
                 break;
-			case DFM_RELEASE_KEYBOARD:
+			case RELEASE_KEYBOARD:
 				if (wnd != NULL)
 				{
-					if (DfCaptureKeyboard == wnd || (int)p1)
-						DfCaptureKeyboard = wnd->PrevKeyboard;
+					if (CaptureKeyboard == wnd || (int)p1)
+						CaptureKeyboard = wnd->PrevKeyboard;
 					else
 					{
-						DFWINDOW twnd = DfCaptureKeyboard;
+						DFWINDOW twnd = CaptureKeyboard;
 						while (twnd != NULL)
 						{
 							if (twnd->PrevKeyboard == wnd)
@@ -440,54 +440,54 @@ int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 							twnd = twnd->PrevKeyboard;
 						}
 						if (twnd == NULL)
-							DfCaptureKeyboard = NULL;
+							CaptureKeyboard = NULL;
 					}
 					wnd->PrevKeyboard = NULL;
 				}
 				else
-					DfCaptureKeyboard = NULL;
+					CaptureKeyboard = NULL;
 				NoChildCaptureKeyboard = FALSE;
 				break;
-            case DFM_CURRENT_KEYBOARD_CURSOR:
-                DfCurrCursor(&x, &y);
+            case CURRENT_KEYBOARD_CURSOR:
+                curr_cursor(&x, &y);
                 *(int*)p1 = x;
                 *(int*)p2 = y;
                 break;
-            case DFM_SAVE_CURSOR:
-                DfSaveCursor();
+            case SAVE_CURSOR:
+                savecursor();
                 break;
-            case DFM_RESTORE_CURSOR:
-                DfRestoreCursor();
+            case RESTORE_CURSOR:
+                restorecursor();
                 break;
-            case DFM_HIDE_CURSOR:
-                DfNormalCursor();
-                DfHideCursor();
+            case HIDE_CURSOR:
+                normalcursor();
+                hidecursor();
                 break;
-            case DFM_SHOW_CURSOR:
+            case SHOW_CURSOR:
                 if (p1)
-                    DfSetCursorSize(100);
+                    set_cursor_size(100);
                 else
-                    DfSetCursorSize(5);
-                DfUnhideCursor();
+                    set_cursor_size(5);
+                unhidecursor();
                 break;
 
-			case DFM_CAPTURE_MOUSE:
+			case CAPTURE_MOUSE:
 				if (p2)
-					((DFWINDOW)p2)->PrevMouse = DfCaptureMouse;
+					((DFWINDOW)p2)->PrevMouse = CaptureMouse;
 				else
-					wnd->PrevMouse = DfCaptureMouse;
-				DfCaptureMouse = wnd;
+					wnd->PrevMouse = CaptureMouse;
+				CaptureMouse = wnd;
 				NoChildCaptureMouse = (int)p1;
 				break;
 
-			case DFM_RELEASE_MOUSE:
+			case RELEASE_MOUSE:
 				if (wnd != NULL)
 				{
-					if (DfCaptureMouse == wnd || (int)p1)
-						DfCaptureMouse = wnd->PrevMouse;
+					if (CaptureMouse == wnd || (int)p1)
+						CaptureMouse = wnd->PrevMouse;
 					else
 					{
-						DFWINDOW twnd = DfCaptureMouse;
+						DFWINDOW twnd = CaptureMouse;
 						while (twnd != NULL)
 						{
 							if (twnd->PrevMouse == wnd)
@@ -498,12 +498,12 @@ int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 							twnd = twnd->PrevMouse;
 						}
 						if (twnd == NULL)
-							DfCaptureMouse = NULL;
+							CaptureMouse = NULL;
 					}
 					wnd->PrevMouse = NULL;
 				}
 				else
-					DfCaptureMouse = NULL;
+					CaptureMouse = NULL;
 				NoChildCaptureMouse = FALSE;
 				break;
 
@@ -516,21 +516,21 @@ int DfSendMessage(DFWINDOW wnd, DFMESSAGE msg, DF_PARAM p1, DF_PARAM p2)
 
 static DFRECT VisibleRect(DFWINDOW wnd)
 {
-	DFRECT rc = DfWindowRect(wnd);
-	if (!DfTestAttribute(wnd, DF_NOCLIP))
+	DFRECT rc = WindowRect(wnd);
+	if (!TestAttribute(wnd, NOCLIP))
 	{
-		DFWINDOW pwnd = DfGetParent(wnd);
+		DFWINDOW pwnd = GetParent(wnd);
 		DFRECT prc;
-		prc = DfClientRect(pwnd);
+		prc = ClientRect(pwnd);
 		while (pwnd != NULL)
 		{
-			if (DfTestAttribute(pwnd, DF_NOCLIP))
+			if (TestAttribute(pwnd, NOCLIP))
 				break;
-			rc = DfSubRectangle(rc, prc);
-			if (!DfValidRect(rc))
+			rc = subRectangle(rc, prc);
+			if (!ValidRect(rc))
 				break;
-			if ((pwnd = DfGetParent(pwnd)) != NULL)
-				prc = DfClientRect(pwnd);
+			if ((pwnd = GetParent(pwnd)) != NULL)
+				prc = ClientRect(pwnd);
 		}
 	}
 	return rc;
@@ -541,17 +541,17 @@ static DFWINDOW inWindow(DFWINDOW wnd, int x, int y)
 {
 	DFWINDOW Hit = NULL;
 	while (wnd != NULL)	{
-		if (DfIsVisible(wnd))	{
+		if (isVisible(wnd))	{
 			DFWINDOW wnd1;
 			DFRECT rc = VisibleRect(wnd);
-			if (DfInsideRect(x, y, rc))
+			if (InsideRect(x, y, rc))
 				Hit = wnd;
-			if ((wnd1 = inWindow(DfLastWindow(wnd), x, y)) != NULL)
+			if ((wnd1 = inWindow(LastWindow(wnd), x, y)) != NULL)
 				Hit = wnd1;
 			if (Hit != NULL)
 				break;
 		}
-		wnd = DfPrevWindow(wnd);
+		wnd = PrevWindow(wnd);
 	}
 	return Hit;
 }
@@ -559,21 +559,21 @@ static DFWINDOW inWindow(DFWINDOW wnd, int x, int y)
 static DFWINDOW MouseWindow(int x, int y)
 {
 	/* get the window in which a mouse event occurred */
-	DFWINDOW Mwnd = inWindow(DfApplicationWindow, x, y);
+	DFWINDOW Mwnd = inWindow(ApplicationWindow, x, y);
 
 	/* ---- process mouse captures ----- */
-	if (DfCaptureMouse != NULL)
+	if (CaptureMouse != NULL)
 	{
 		if (NoChildCaptureMouse ||
 		    Mwnd == NULL 	||
-		    !DfIsAncestor(Mwnd, DfCaptureMouse))
-			Mwnd = DfCaptureMouse;
+		    !isAncestor(Mwnd, CaptureMouse))
+			Mwnd = CaptureMouse;
 	}
 	return Mwnd;
 }
 
 
-void DfHandshake(void)
+void handshake(void)
 {
 	handshaking++;
 	DfDispatchMessage ();
@@ -593,52 +593,52 @@ BOOL DfDispatchMessage (void)
 	while (EventQueueCtr > 0)
 	{
 		struct events ev;
-			
+
 		ev = EventQueue[EventQueueOffCtr];
-		if (++EventQueueOffCtr == DF_MAXMESSAGES)
+		if (++EventQueueOffCtr == MAXMESSAGES)
 			EventQueueOffCtr = 0;
 		--EventQueueCtr;
 
 		/* get the window in which a keyboard event occurred */
-		Kwnd = DfInFocus;
+		Kwnd = inFocus;
 
 		/* process keyboard captures */
-		if (DfCaptureKeyboard != NULL)
+		if (CaptureKeyboard != NULL)
 		{
 			if (Kwnd == NULL ||
 			    NoChildCaptureKeyboard ||
-			    !DfIsAncestor(Kwnd, DfCaptureKeyboard))
-				Kwnd = DfCaptureKeyboard;
+			    !isAncestor(Kwnd, CaptureKeyboard))
+				Kwnd = CaptureKeyboard;
 		}
 
 		/* send mouse and keyboard messages to the
 		   window that should get them */
 		switch (ev.event)
 		{
-			case DFM_SHIFT_CHANGED:
-			case DFM_KEYBOARD:
+			case SHIFT_CHANGED:
+			case KEYBOARD:
 				if (!handshaking)
 					DfSendMessage(Kwnd, ev.event, ev.mx, ev.my);
 				break;
 
-			case DFM_LEFT_BUTTON:
+			case LEFT_BUTTON:
 				if (!handshaking)
 				{
 					Mwnd = MouseWindow(ev.mx, ev.my);
-					if (!DfCaptureMouse ||
+					if (!CaptureMouse ||
 					    (!NoChildCaptureMouse &&
-					     DfIsAncestor(Mwnd, DfCaptureMouse)))
+					     isAncestor(Mwnd, CaptureMouse)))
 					{
-						if (Mwnd != DfInFocus)
-							DfSendMessage(Mwnd, DFM_SETFOCUS, TRUE, 0);
-						DfSendMessage(Mwnd, DFM_LEFT_BUTTON, ev.mx, ev.my);
+						if (Mwnd != inFocus)
+							DfSendMessage(Mwnd, SETFOCUS, TRUE, 0);
+						DfSendMessage(Mwnd, LEFT_BUTTON, ev.mx, ev.my);
 					}
 				}
 				break;
 
 			case DFM_BUTTON_RELEASED:
 			case DOUBLE_CLICK:
-			case DFM_RIGHT_BUTTON:
+			case RIGHT_BUTTON:
 				if (handshaking)
 					break;
 
@@ -647,7 +647,7 @@ BOOL DfDispatchMessage (void)
 				DfSendMessage(Mwnd, ev.event, ev.mx, ev.my);
 				break;
 
-			case DFM_CLOCKTICK:
+			case CLOCKTICK:
 				DfSendMessage(Cwnd, ev.event, ev.mx, ev.my);
 				break;
 
@@ -663,12 +663,12 @@ BOOL DfDispatchMessage (void)
 
 		mq = MsgQueue[MsgQueueOffCtr];
 
-		if (++MsgQueueOffCtr == DF_MAXMESSAGES)
+		if (++MsgQueueOffCtr == MAXMESSAGES)
 			MsgQueueOffCtr = 0;
 		--MsgQueueCtr;
 
 		DfSendMessage (mq.wnd, mq.msg, mq.p1, mq.p2);
-		if (mq.msg == DFM_ENDDIALOG)
+		if (mq.msg == ENDDIALOG)
 			return FALSE;
 
 		if (mq.msg == DFM_STOP)
